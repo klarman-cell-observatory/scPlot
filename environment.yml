@@ -1,0 +1,7 @@
+name: scplot
+dependencies:
+  - pip
+  - pip:
+      - anndata
+      - hvplot
+
