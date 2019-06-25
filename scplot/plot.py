@@ -111,7 +111,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
 
 
 def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
-            dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 300, height: int = 300,
+            dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
             nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean, **kwds):
     """
     Generate a scatter plot.
