@@ -158,6 +158,10 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
             df[key] = adata.obs[key].values
 
     if nbins is not None:
+        df['count'] = 1.0
+        hover_cols = keywords.get('hover_cols', [])
+        hover_cols.append('count')
+        keywords['hover_cols'] = hover_cols
         df = __bin__(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
 
     if color is not None:
@@ -177,6 +181,7 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         keywords['s'] = 'pixels'
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append(size)
+        keywords['hover_cols'] = hover_cols
     elif size is not None:
         keywords['size'] = size
 
@@ -329,13 +334,12 @@ def __bin__(df, nbins, coordinate_columns, reduce_function, coordinate_column_to
 
     agg_func = {}
     for column in df:
-        if column == 'density':
+        if column == 'count':
             agg_func[column] = 'sum'
         elif str(df[column].dtype) == 'category':
             agg_func[column] = max_count
         elif column not in coordinate_columns:
             agg_func[column] = reduce_function
-
     return df.groupby(coordinate_columns, as_index=False).agg(agg_func)
 
 
@@ -350,7 +354,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
 
     Parameters:
     adata: Annotated data matrix.
-    keys: Key for accessing variables of adata.var_names or a field of adata.obs used to color the plot
+    keys: Key for accessing variables of adata.var_names or a field of adata.obs used to color the plot. Can also use `count` to plot cell count when binning.
     basis: String in adata.obsm containing coordinates.
     alpha: Points alpha value.
     size: Point pixel size.
@@ -380,24 +384,26 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     df = pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns)
     # create df
     for key in keys:
-        if key in adata_raw.var_names:
-            X = adata_raw[:, key].X
-            if scipy.sparse.issparse(X):
-                X = X.toarray()
-            df[key] = X
-        else:
-            df[key] = adata.obs[key].values
+        if key is not 'count':  # count means plot cell count
+            if key in adata_raw.var_names:
+                X = adata_raw[:, key].X
+                if scipy.sparse.issparse(X):
+                    X = X.toarray()
+                df[key] = X
+            else:
+                df[key] = adata.obs[key].values
+
     if len(keys) == 0:
-        df['density'] = 1
-        keys = ['density']
+        keys = ['count']
     plots = []
     if nbins is not None:
+        df['count'] = 1.0
+        hover_cols = keywords.get('hover_cols', [])
+        hover_cols.append('count')
+        keywords['hover_cols'] = hover_cols
         df = __bin__(df, nbins=nbins, coordinate_columns=coordinate_columns, reduce_function=reduce_function)
     for key in keys:
-        is_color_by = key != 'density'
-        is_color_by_numeric = False
-        if is_color_by:
-            is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
+        is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
         df_to_plot = df
         if sort and is_color_by_numeric:
             df_to_plot = df.sort_values(by=key)
@@ -405,11 +411,11 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         p = df_to_plot.hvplot.scatter(x=coordinate_columns[0],
                                       y=coordinate_columns[1],
                                       title=str(key),
-                                      c=key if is_color_by and is_color_by_numeric else None,
-                                      by=key if is_color_by and not is_color_by_numeric else None,
+                                      c=key if is_color_by_numeric else None,
+                                      by=key if not is_color_by_numeric else None,
                                       size=size,
                                       alpha=alpha,
-                                      colorbar=is_color_by and is_color_by_numeric,
+                                      colorbar=is_color_by_numeric,
                                       width=width, height=height, **keywords)
         plots.append(p)
     layout = hv.Layout(plots).cols(2)
