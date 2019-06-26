@@ -112,7 +112,8 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
 
 def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
             dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
-            nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean, **kwds):
+            nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
+            cmap: Union[str, List[str], Tuple[str]] = 'viridis', **kwds):
     """
     Generate a scatter plot.
 
@@ -120,6 +121,7 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
     adata: Annotated data matrix.
     x: Key for accessing variables of adata.var_names or field of adata.obs
     y: Key for accessing variables of adata.var_names or field of adata.obs
+    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
     color: Field in .var_names or adata.obs to color the points by.
     sort: Plot higher color by values on top of lower values.
     size: Field in .var_names or adata.obs to size the points by or a pixel size.
@@ -137,7 +139,7 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         adata_raw = adata.raw
     # color can be obs (by) or var_name (c)
     keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, width=width,
-                    height=height, alpha=1, tools=['box_select'])
+                    height=height, alpha=1, tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
     df = pd.DataFrame(index=adata.obs.index)
     keys = [x, y]
@@ -343,7 +345,8 @@ def __bin__(df, nbins, coordinate_columns, reduce_function, coordinate_column_to
     return df.groupby(coordinate_columns, as_index=False).agg(agg_func)
 
 
-def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None, cmap='viridis',
+def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
+              cmap: Union[str, List[str], Tuple[str]] = 'viridis',
               alpha: float = 1, size: int = 12,
               width: int = 400, height: int = 400,
               sort: bool = True,
