@@ -1,5 +1,5 @@
 # scPlot
 
-Plotting tools for scCloud
+Plotting tools for [scCloud](https://sccloud.readthedocs.io/en/latest/)
 
-[View example notebooks](https://nbviewer.jupyter.org/github/klarman-cell-observatory/scPlot/tree/master/notebooks/)
+[View example notebook](https://nbviewer.jupyter.org/github/klarman-cell-observatory/scPlot/tree/master/notebooks/scplot.ipynb)
