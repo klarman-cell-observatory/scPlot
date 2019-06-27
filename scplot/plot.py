@@ -28,6 +28,32 @@ def __size_legend__(size_min, size_max, dot_min, dot_max, size_tick_labels_forma
     return overlay
 
 
+def __bin__(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_range=None):
+    # replace coordinates with bin
+    for view_column_name in coordinate_columns:  # add view column _bin
+        values = df[view_column_name].values
+        view_column_range = coordinate_column_to_range.get(view_column_name,
+                                                           None) if coordinate_column_to_range is not None else None
+        column_min = values.min() if view_column_range is None else view_column_range[0]
+        column_max = values.max() if view_column_range is None else view_column_range[1]
+        df[view_column_name] = np.floor(
+            np.interp(values, [column_min, column_max], [0, nbins - 1])).astype(int)
+
+    def max_count(x):
+        # return x.value_counts().index[0]
+        return x.values[x.values.argmax()]
+
+    agg_func = {}
+    for column in df:
+        if column == 'count':
+            agg_func[column] = 'sum'
+        elif str(df[column].dtype) == 'category':
+            agg_func[column] = max_count
+        elif column not in coordinate_columns:
+            agg_func[column] = reduce_function
+    return df.groupby(coordinate_columns, as_index=False).agg(agg_func), df[coordinate_columns]
+
+
 def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = None,
            width: int = 200, cmap: Union[str, List[str], Tuple[str]] = 'Category20', cols: int = 3,
            use_raw: bool = None, **kwds):
@@ -159,12 +185,13 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         else:
             df[key] = adata.obs[key].values
 
+    df_with_coords = df
     if nbins is not None:
         df['count'] = 1.0
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append('count')
         keywords['hover_cols'] = hover_cols
-        df = __bin__(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
+        df, df_with_coords = __bin__(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
 
     if color is not None:
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
@@ -192,9 +219,10 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         layout = (p + __size_legend__(size_min=size_min, size_max=size_max, dot_min=dot_min, dot_max=dot_max,
                                       size_tick_labels_format='{0:.1f}',
                                       size_ticks=np.array([size_min, (size_min + size_max) / 2, size_max])))
-        return layout
     else:
-        return hv.Layout([p]).cols(1)
+        layout = hv.Layout([p]).cols(1)
+    layout.df = df_with_coords
+    return layout
 
 
 def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, reduce_function=np.mean,
@@ -319,37 +347,11 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     return hvplot.scatter_matrix(df, c=color, **kwds)
 
 
-def __bin__(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_range=None):
-    # replace coordinates with bin
-    for view_column_name in coordinate_columns:  # add view column _bin
-        values = df[view_column_name].values
-        view_column_range = coordinate_column_to_range.get(view_column_name,
-                                                           None) if coordinate_column_to_range is not None else None
-        column_min = values.min() if view_column_range is None else view_column_range[0]
-        column_max = values.max() if view_column_range is None else view_column_range[1]
-        df[view_column_name] = np.floor(
-            np.interp(values, [column_min, column_max], [0, nbins - 1])).astype(int)
-
-    def max_count(x):
-        # return x.value_counts().index[0]
-        return x.values[x.values.argmax()]
-
-    agg_func = {}
-    for column in df:
-        if column == 'count':
-            agg_func[column] = 'sum'
-        elif str(df[column].dtype) == 'category':
-            agg_func[column] = max_count
-        elif column not in coordinate_columns:
-            agg_func[column] = reduce_function
-    return df.groupby(coordinate_columns, as_index=False).agg(agg_func)
-
-
 def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
               cmap: Union[str, List[str], Tuple[str]] = 'viridis',
               alpha: float = 1, size: int = 12,
               width: int = 400, height: int = 400,
-              sort: bool = True,
+              sort: bool = True, cols: int = 2,
               use_raw: bool = None, nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
               **kwds):
     """
@@ -364,7 +366,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     sort: Plot higher values on top of lower values.
     cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
     nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
-    reduce_function: Function used to summarize overlapping cells if nbins is specified
+    reduce_function: Function used to summarize overlapping cells if nbins is specified.
+    cols: Number of columns for laying out multiple plots
     width: Plot width.
     height: Plot height.
     use_raw: Use `raw` attribute of `adata` if present.
@@ -383,7 +386,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
                     tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
-    coordinate_columns = [basis + c for c in ['1', '2']]
+    coordinate_columns = ['X_' + basis + c for c in ['1', '2']]
     df = pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns)
     # create df
     for key in keys:
@@ -399,12 +402,14 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     if len(keys) == 0:
         keys = ['count']
     plots = []
+    df_with_coords = df
     if nbins is not None:
         df['count'] = 1.0
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append('count')
         keywords['hover_cols'] = hover_cols
-        df = __bin__(df, nbins=nbins, coordinate_columns=coordinate_columns, reduce_function=reduce_function)
+        df, df_with_coords = __bin__(df, nbins=nbins, coordinate_columns=coordinate_columns,
+                                     reduce_function=reduce_function)
     for key in keys:
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
         df_to_plot = df
@@ -421,6 +426,6 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
                                       colorbar=is_color_by_numeric,
                                       width=width, height=height, **keywords)
         plots.append(p)
-    layout = hv.Layout(plots).cols(2)
-    layout.df = df
+    layout = hv.Layout(plots).cols(cols)
+    layout.df = df_with_coords
     return layout
