@@ -26,6 +26,7 @@ test_requirements = [
 setuptools.setup(
     name='scplot',
     version='0.0.2',
+    author="Joshua Gould",
     description="Single cell plotting",
     url='https://github.com/klarman-cell-observatory/scPlot',
     long_description=long_description,
