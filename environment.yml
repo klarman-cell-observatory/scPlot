@@ -2,6 +2,7 @@ name: scplot
 dependencies:
   - pip
   - pip:
+      - scplot
       - anndata
       - hvplot
 
