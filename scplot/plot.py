@@ -39,16 +39,12 @@ def __bin__(df, nbins, coordinate_columns, reduce_function, coordinate_column_to
         df[view_column_name] = np.floor(
             np.interp(values, [column_min, column_max], [0, nbins - 1])).astype(int)
 
-    def max_count(x):
-        # return x.value_counts().index[0]
-        return x.values[x.values.argmax()]
-
     agg_func = {}
     for column in df:
         if column == 'count':
             agg_func[column] = 'sum'
         elif str(df[column].dtype) == 'category':
-            agg_func[column] = max_count
+            agg_func[column] = lambda x: x.mode()[0]
         elif column not in coordinate_columns:
             agg_func[column] = reduce_function
     return df.groupby(coordinate_columns, as_index=False).agg(agg_func), df[coordinate_columns]
