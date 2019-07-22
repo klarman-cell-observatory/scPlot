@@ -9,8 +9,8 @@ from anndata import AnnData
 from holoviews import dim
 
 
-def __size_legend__(size_min, size_max, dot_min, dot_max, size_tick_labels_format, size_ticks):
-    # TODO improve size legend
+def __size_legend(size_min, size_max, dot_min, dot_max, size_tick_labels_format, size_ticks):
+    # TODO improve
     size_ticks_pixels = np.interp(size_ticks, (size_min, size_max), (dot_min, dot_max))
     size_tick_labels = [size_tick_labels_format.format(x) for x in size_ticks]
     points = hv.Points(
@@ -28,7 +28,7 @@ def __size_legend__(size_min, size_max, dot_min, dot_max, size_tick_labels_forma
     return overlay
 
 
-def __bin__(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_range=None):
+def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_range=None):
     # replace coordinates with bin
     for view_column_name in coordinate_columns:  # add view column _bin
         values = df[view_column_name].values
@@ -74,7 +74,7 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     plots = []
     keywords = dict(padding=0.02, cmap=cmap)
     keywords.update(kwds)
-    if not isinstance(keys, (list, tuple)):
+    if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     for key in keys:
         if key in adata_raw.var_names:
@@ -114,7 +114,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
         if adata.raw is None:
             raise ValueError('Raw data not found')
         adata_raw = adata.raw
-    if not isinstance(keys, (list, tuple)):
+    if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     df = None
     keywords = dict(colorbar=True, xlabel='', cmap=cmap, ylabel=str(by), rot=90)
@@ -187,7 +187,7 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append('count')
         keywords['hover_cols'] = hover_cols
-        df, df_with_coords = __bin__(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
+        df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
 
     if color is not None:
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
@@ -212,9 +212,9 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
 
     p = df.hvplot.scatter(x=x, y=y, **keywords)
     if is_size_by:
-        layout = (p + __size_legend__(size_min=size_min, size_max=size_max, dot_min=dot_min, dot_max=dot_max,
-                                      size_tick_labels_format='{0:.1f}',
-                                      size_ticks=np.array([size_min, (size_min + size_max) / 2, size_max])))
+        layout = (p + __size_legend(size_min=size_min, size_max=size_max, dot_min=dot_min, dot_max=dot_max,
+                                    size_tick_labels_format='{0:.1f}',
+                                    size_ticks=np.array([size_min, (size_min + size_max) / 2, size_max])))
     else:
         layout = hv.Layout([p]).cols(1)
     layout.df = df_with_coords
@@ -245,7 +245,7 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
         if adata.raw is None:
             raise ValueError('Raw data not found')
         adata_raw = adata.raw
-    if not isinstance(keys, (list, tuple)):
+    if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     keywords = dict(colorbar=True, ylabel=str(by), xlabel='', hover_cols=['fraction'], padding=0, rot=90, cmap=cmap)
 
@@ -298,8 +298,8 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
 
     size_ticks = np.arange(fraction_min if fraction_min > 0 or fraction_min > 0 else fraction_min + size_legend_step,
                            fraction_max + size_legend_step, size_legend_step)
-    return p + __size_legend__(size_min=fraction_min, size_max=fraction_max, dot_min=dot_min, dot_max=dot_max,
-                               size_tick_labels_format='{:.0%}', size_ticks=size_ticks)
+    return p + __size_legend(size_min=fraction_min, size_max=fraction_max, dot_min=dot_min, dot_max=dot_max,
+                             size_tick_labels_format='{:.0%}', size_ticks=size_ticks)
 
 
 def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], color=None, use_raw: bool = None, **kwds):
@@ -318,7 +318,7 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
         if adata.raw is None:
             raise ValueError('Raw data not found')
         adata_raw = adata.raw
-    if not isinstance(keys, (list, tuple)):
+    if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
 
     df = pd.DataFrame(index=adata.obs.index)
@@ -377,7 +377,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         if adata.raw is None:
             raise ValueError('Raw data not found')
         adata_raw = adata.raw
-    if not isinstance(keys, (list, tuple)):
+    if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
                     tools=['box_select'], cmap=cmap)
@@ -404,8 +404,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append('count')
         keywords['hover_cols'] = hover_cols
-        df, df_with_coords = __bin__(df, nbins=nbins, coordinate_columns=coordinate_columns,
-                                     reduce_function=reduce_function)
+        df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
+                                   reduce_function=reduce_function)
     for key in keys:
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
         df_to_plot = df
