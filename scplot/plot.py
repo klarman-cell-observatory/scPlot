@@ -278,15 +278,27 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
         fraction_max = fraction.max()
     size = np.interp(fraction, (fraction_min, fraction_max), (dot_min, dot_max))
     summary_values = mean_df.values.flatten()
+    # xlabel = [keys[i] for i in range(len(keys))]
+    # ylabel = [str(summarized.index[i]) for i in range(len(summarized.index))]
+    tmp_df = pd.DataFrame(
+        data=dict(x=x, y=y, value=summary_values, pixels=size, fraction=fraction))
 
-    tmp_df = pd.DataFrame(data=dict(x=x, y=y, summary=summary_values, pixels=size, fraction=fraction))
     xticks = [(i, keys[i]) for i in range(len(keys))]
     yticks = [(i, str(summarized.index[i])) for i in range(len(summarized.index))]
 
     keywords['width'] = int(np.ceil(dot_max * len(xticks) + 150))
     keywords['height'] = int(np.ceil(dot_max * len(yticks) + 100))
+    try:
+        import bokeh.models
+        keywords['tools'] = [bokeh.models.HoverTool(tooltips=[
+            ('fraction', '@fraction'),
+            ('value', '@value')
+        ])]
+    except ModuleNotFoundError:
+        pass
+
     p = tmp_df.hvplot.scatter(x='x', y='y', xlim=(-0.5, len(xticks) + 0.5), ylim=(-0.5, len(yticks) + 0.5),
-                              c='summary', s='pixels', xticks=xticks, yticks=yticks, **keywords)
+                              c='value', s='pixels', xticks=xticks, yticks=yticks, **keywords)
 
     size_range = fraction_max - fraction_min
     if 0.3 < size_range <= 0.6:
