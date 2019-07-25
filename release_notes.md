@@ -7,3 +7,6 @@
 
 # 0.0.3, July 1, 2019
 - Use mode function to summarize categorical data types when binning
+
+# 0.0.4, July 25, 2019
+- Improved dotplot tooltips
