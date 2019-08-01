@@ -23,9 +23,44 @@ def __size_legend(size_min, size_max, dot_min, dot_max, size_tick_labels_format,
         ['x', 'y'], 'text').opts(text_align='left', text_font_size='9pt')
     overlay = (points * labels)
     overlay.opts(width=125, height=int(len(size_ticks) * (dot_max + 12)), xlim=(0, 1),
-                 ylim=(0, len(size_ticks) + 1),
-                 invert_yaxis=True, shared_axes=False, show_frame=False)
+        ylim=(0, len(size_ticks) + 1),
+        invert_yaxis=True, shared_axes=False, show_frame=False)
     return overlay
+
+
+def __fix_color_by_data_type(df, by):
+    if by is not None and (pd.api.types.is_categorical_dtype(df[by]) or pd.api.types.is_bool_dtype(df[by])):
+        df[by] = df[by].astype(str)  # hvplot does not currently handle categorical or boolean type for colors
+
+
+def __get_raw(adata, use_raw):
+    adata_raw = adata
+    if use_raw or (use_raw is None and adata.raw is not None):
+        if adata.raw is None:
+            raise ValueError('Raw data not found')
+        adata_raw = adata.raw
+    return adata_raw
+
+
+def __get_df(adata, adata_raw, keys, df=None, is_obs=None):
+    if df is not None and is_obs is None:
+        raise ValueError('Please provide is_obs when df is provided.')
+    for key in keys:
+        if df is None:
+            is_obs = key not in adata.var
+            df = pd.DataFrame(data=dict(id=(adata.obs.index.values if is_obs else adata.var.index.values)))
+        if key in adata_raw.var_names and is_obs:
+            X = adata_raw[:, key].X
+            if scipy.sparse.issparse(X):
+                X = X.toarray()
+            df[key] = X
+        elif key in adata.obs and is_obs:
+            df[key] = adata.obs[key].values
+        elif key in adata.var and not is_obs:
+            df[key] = adata.var[key].values
+        else:
+            raise ValueError('{} not found'.format(key))
+    return df
 
 
 def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_range=None):
@@ -33,7 +68,7 @@ def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_r
     for view_column_name in coordinate_columns:  # add view column _bin
         values = df[view_column_name].values
         view_column_range = coordinate_column_to_range.get(view_column_name,
-                                                           None) if coordinate_column_to_range is not None else None
+            None) if coordinate_column_to_range is not None else None
         column_min = values.min() if view_column_range is None else view_column_range[0]
         column_max = values.max() if view_column_range is None else view_column_range[1]
         df[view_column_name] = np.floor(
@@ -43,9 +78,9 @@ def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_r
     for column in df:
         if column == 'count':
             agg_func[column] = 'sum'
-        elif str(df[column].dtype) == 'category':
+        elif pd.api.types.is_categorical_dtype(df[column]):
             agg_func[column] = lambda x: x.mode()[0]
-        elif column not in coordinate_columns:
+        elif column not in coordinate_columns and pd.api.types.is_numeric_dtype(df[column]):
             agg_func[column] = reduce_function
     return df.groupby(coordinate_columns, as_index=False).agg(agg_func), df[coordinate_columns]
 
@@ -58,7 +93,7 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
 
     Parameters:
     adata: Annotated data matrix.
-    keys: Keys for accessing variables of adata.var_names or fields of adata.obs
+    keys: Keys for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
     by: Group plot by specified observation.
     width: Plot width.
     cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
@@ -66,28 +101,16 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     use_raw: Use `raw` attribute of `adata` if present.
     """
 
-    adata_raw = adata
-    if use_raw or (use_raw is None and adata.raw is not None):
-        if adata.raw is None:
-            raise ValueError('Raw data not found')
-        adata_raw = adata.raw
+    adata_raw = __get_raw(adata, use_raw)
+
     plots = []
     keywords = dict(padding=0.02, cmap=cmap)
     keywords.update(kwds)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
+    df = __get_df(adata, adata_raw, keys + ([] if by is None else [by]))
+    __fix_color_by_data_type(df, by)
     for key in keys:
-        if key in adata_raw.var_names:
-            X = adata_raw[:, key].X
-            if scipy.sparse.issparse(X):
-                X = X.toarray()
-            df = pd.DataFrame(X, columns=[key])
-            if by is not None:
-                df[by] = adata.obs[by].values
-        else:
-            df = adata.obs
-        if by is not None and str(df[by].dtype) == 'category':
-            df[by] = df[by].astype(str)  # hvplot does not currently handle categorical type for colors
         p = df.hvplot.violin(key, width=width, by=by, violin_color=by, **keywords)
         plots.append(p)
 
@@ -109,11 +132,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     use_raw: Use `raw` attribute of `adata` if present.
     """
 
-    adata_raw = adata
-    if use_raw or (use_raw is None and adata.raw is not None):
-        if adata.raw is None:
-            raise ValueError('Raw data not found')
-        adata_raw = adata.raw
+    adata_raw = __get_raw(adata, use_raw)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     df = None
@@ -141,12 +160,57 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
 
     Parameters:
     adata: Annotated data matrix.
-    x: Key for accessing variables of adata.var_names or field of adata.obs
-    y: Key for accessing variables of adata.var_names or field of adata.obs
+    x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+    y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
     cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    color: Field in .var_names or adata.obs to color the points by.
+    color: Field in .var_names, adata.var, or adata.obs to color the points by.
     sort: Plot higher color by values on top of lower values.
-    size: Field in .var_names or adata.obs to size the points by or a pixel size.
+    size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
+    dot_min: Minimum dot size when sizing points by a field.
+    dot_max: Maximum dot size when sizing points by a field.
+    use_raw: Use `raw` attribute of `adata` if present.
+    nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
+    reduce_function: Function used to summarize overlapping cells if nbins is specified
+    """
+    return __scatter(adata=adata, x=x, y=y, color=color, size=size, dot_min=dot_min, dot_max=dot_max, use_raw=use_raw,
+        sort=sort, width=width, height=height, nbins=nbins, reduce_function=reduce_function, cmap=cmap, is_scatter=True,
+        **kwds)
+
+
+def line(adata: AnnData, x: str, y: str,
+         use_raw: bool = None, width: int = 400, height: int = 400,
+         nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean, **kwds):
+    """
+    Generate a scatter plot.
+
+    Parameters:
+    adata: Annotated data matrix.
+    x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+    y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+    use_raw: Use `raw` attribute of `adata` if present.
+    nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
+    reduce_function: Function used to summarize overlapping cells if nbins is specified
+    """
+    return __scatter(adata=adata, x=x, y=y, use_raw=use_raw, sort=False, width=width, height=height, nbins=nbins,
+        reduce_function=reduce_function, is_scatter=False,
+        **kwds)
+
+
+def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
+              dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
+              nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
+              cmap: Union[str, List[str], Tuple[str]] = 'viridis', is_scatter=True, **kwds):
+    """
+    Generate a scatter plot.
+
+    Parameters:
+    adata: Annotated data matrix.
+    x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+    y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+    color: Field in .var_names, adata.var, or adata.obs to color the points by.
+    sort: Plot higher color by values on top of lower values.
+    size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
     dot_min: Minimum dot size when sizing points by a field.
     dot_max: Maximum dot size when sizing points by a field.
     use_raw: Use `raw` attribute of `adata` if present.
@@ -154,42 +218,30 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
     reduce_function: Function used to summarize overlapping cells if nbins is specified
     """
 
-    adata_raw = adata
-    if use_raw or (use_raw is None and adata.raw is not None):
-        if adata.raw is None:
-            raise ValueError('Raw data not found')
-        adata_raw = adata.raw
-    # color can be obs (by) or var_name (c)
+    adata_raw = __get_raw(adata, use_raw)
     keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, width=width,
-                    height=height, alpha=1, tools=['box_select'], cmap=cmap)
+        height=height, alpha=1, tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
-    df = pd.DataFrame(index=adata.obs.index)
+
     keys = [x, y]
-    if color is not None:
+    if color is not None and is_scatter:
         keys.append(color)
     is_size_by = isinstance(size, str)
-    if is_size_by:
+    if is_size_by and is_scatter:
         keys.append(size)
 
-    # create df
-    for key in keys:
-        if key in adata_raw.var_names:
-            X = adata_raw[:, key].X
-            if scipy.sparse.issparse(X):
-                X = X.toarray()
-            df[key] = X
-        else:
-            df[key] = adata.obs[key].values
-
+    df = __get_df(adata, adata_raw, keys)
     df_with_coords = df
+    hover_cols = keywords.get('hover_cols', [])
     if nbins is not None:
         df['count'] = 1.0
-        hover_cols = keywords.get('hover_cols', [])
         hover_cols.append('count')
-        keywords['hover_cols'] = hover_cols
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
-
-    if color is not None:
+    else:
+        hover_cols.append('id')
+    keywords['hover_cols'] = hover_cols
+    if color is not None and is_scatter:
+        __fix_color_by_data_type(df, color)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
         if is_color_by_numeric:
             keywords.update(dict(colorbar=True, c=color))
@@ -209,16 +261,20 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         keywords['hover_cols'] = hover_cols
     elif size is not None:
         keywords['size'] = size
-
-    p = df.hvplot.scatter(x=x, y=y, **keywords)
-    if is_size_by:
-        layout = (p + __size_legend(size_min=size_min, size_max=size_max, dot_min=dot_min, dot_max=dot_max,
-                                    size_tick_labels_format='{0:.1f}',
-                                    size_ticks=np.array([size_min, (size_min + size_max) / 2, size_max])))
+    if is_scatter:
+        p = df.hvplot.scatter(x=x, y=y, **keywords)
     else:
-        layout = hv.Layout([p]).cols(1)
-    layout.df = df_with_coords
-    return layout
+        df = df.sort_values(by=x)
+        p = df.hvplot.line(x=x, y=y, **keywords)
+
+    if is_size_by:
+        return_value = (p + __size_legend(size_min=size_min, size_max=size_max, dot_min=dot_min, dot_max=dot_max,
+            size_tick_labels_format='{0:.1f}',
+            size_ticks=np.array([size_min, (size_min + size_max) / 2, size_max])))
+    else:
+        return_value = p
+    return_value.df = df_with_coords
+    return return_value
 
 
 def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, reduce_function=np.mean,
@@ -240,11 +296,7 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     use_raw: Use `raw` attribute of `adata` if present.
     """
 
-    adata_raw = adata
-    if use_raw or (use_raw is None and adata.raw is not None):
-        if adata.raw is None:
-            raise ValueError('Raw data not found')
-        adata_raw = adata.raw
+    adata_raw = __get_raw(adata, use_raw)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     keywords = dict(colorbar=True, ylabel=str(by), xlabel='', hover_cols=['fraction'], padding=0, rot=90, cmap=cmap)
@@ -291,14 +343,14 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     try:
         import bokeh.models
         keywords['tools'] = [bokeh.models.HoverTool(tooltips=[
-            ('fraction', '@fraction'),
-            ('value', '@value')
+                ('fraction', '@fraction'),
+                ('value', '@value')
         ])]
     except ModuleNotFoundError:
         pass
 
     p = tmp_df.hvplot.scatter(x='x', y='y', xlim=(-0.5, len(xticks) + 0.5), ylim=(-0.5, len(yticks) + 0.5),
-                              c='value', s='pixels', xticks=xticks, yticks=yticks, **keywords)
+        c='value', s='pixels', xticks=xticks, yticks=yticks, **keywords)
 
     size_range = fraction_max - fraction_min
     if 0.3 < size_range <= 0.6:
@@ -309,9 +361,9 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
         size_legend_step = 0.2
 
     size_ticks = np.arange(fraction_min if fraction_min > 0 or fraction_min > 0 else fraction_min + size_legend_step,
-                           fraction_max + size_legend_step, size_legend_step)
+        fraction_max + size_legend_step, size_legend_step)
     return p + __size_legend(size_min=fraction_min, size_max=fraction_max, dot_min=dot_min, dot_max=dot_max,
-                             size_tick_labels_format='{:.0%}', size_ticks=size_ticks)
+        size_tick_labels_format='{:.0%}', size_ticks=size_ticks)
 
 
 def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], color=None, use_raw: bool = None, **kwds):
@@ -325,33 +377,13 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     use_raw: Use `raw` attribute of `adata` if present.
     """
 
-    adata_raw = adata
-    if use_raw or (use_raw is None and adata.raw is not None):
-        if adata.raw is None:
-            raise ValueError('Raw data not found')
-        adata_raw = adata.raw
+    adata_raw = __get_raw(adata, use_raw)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
-
-    df = pd.DataFrame(index=adata.obs.index)
     if color is not None:
-        if color in adata_raw.var_names:
-            raise ValueError('Coloring scatter matrix by gene expression not yet supported')
-            # X = adata_raw[:, c].X
-            # if scipy.sparse.issparse(X):
-            #     X = X.toarray()
-            # df[c] = X
-        else:
-            df[color] = adata.obs[color].values
-    for key in keys:
-        if key in adata_raw.var_names:
-            X = adata_raw[:, key].X
-            if scipy.sparse.issparse(X):
-                X = X.toarray()
-            df[key] = X
-        else:
-            df[key] = adata.obs[key].values
-
+        keys.append(color)
+    df = __get_df(adata, adata_raw, keys)
+    __fix_color_by_data_type(df, color)
     return hvplot.scatter_matrix(df, c=color, **kwds)
 
 
@@ -384,40 +416,27 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     if keys is None:
         keys = []
 
-    adata_raw = adata
-    if use_raw or (use_raw is None and adata.raw is not None):
-        if adata.raw is None:
-            raise ValueError('Raw data not found')
-        adata_raw = adata.raw
+    adata_raw = __get_raw(adata, use_raw)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
     keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
-                    tools=['box_select'], cmap=cmap)
+        tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
     coordinate_columns = ['X_' + basis + c for c in ['1', '2']]
-    df = pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns)
-    # create df
-    for key in keys:
-        if key is not 'count':  # count means plot cell count
-            if key in adata_raw.var_names:
-                X = adata_raw[:, key].X
-                if scipy.sparse.issparse(X):
-                    X = X.toarray()
-                df[key] = X
-            else:
-                df[key] = adata.obs[key].values
-
+    df = __get_df(adata, adata_raw, keys, pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns),
+        is_obs=True)
+    df_with_coords = df
     if len(keys) == 0:
         keys = ['count']
     plots = []
-    df_with_coords = df
+
     if nbins is not None:
         df['count'] = 1.0
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append('count')
         keywords['hover_cols'] = hover_cols
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
-                                   reduce_function=reduce_function)
+            reduce_function=reduce_function)
     for key in keys:
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
         df_to_plot = df
@@ -425,14 +444,14 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
             df_to_plot = df.sort_values(by=key)
 
         p = df_to_plot.hvplot.scatter(x=coordinate_columns[0],
-                                      y=coordinate_columns[1],
-                                      title=str(key),
-                                      c=key if is_color_by_numeric else None,
-                                      by=key if not is_color_by_numeric else None,
-                                      size=size,
-                                      alpha=alpha,
-                                      colorbar=is_color_by_numeric,
-                                      width=width, height=height, **keywords)
+            y=coordinate_columns[1],
+            title=str(key),
+            c=key if is_color_by_numeric else None,
+            by=key if not is_color_by_numeric else None,
+            size=size,
+            alpha=alpha,
+            colorbar=is_color_by_numeric,
+            width=width, height=height, **keywords)
         plots.append(p)
     layout = hv.Layout(plots).cols(cols)
     layout.df = df_with_coords
