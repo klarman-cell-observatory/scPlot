@@ -9,6 +9,21 @@ from anndata import AnnData
 from holoviews import dim
 
 
+def __create_bounds_stream(source):
+    stream = hv.streams.BoundsXY(source=source)
+    return stream
+
+
+def get_bounds(plot):
+    if isinstance(plot, hv.Layout):
+        if plot.shape == (1, 1):
+            plot = plot[0, 0]
+        else:
+            raise ValueError('Please select the plot in the layout')
+    if hasattr(plot, 'bounds_stream'):
+        return plot.bounds_stream.bounds
+
+
 def __size_legend(size_min, size_max, dot_min, dot_max, size_tick_labels_format, size_ticks):
     # TODO improve
     size_ticks_pixels = np.interp(size_ticks, (size_min, size_max), (dot_min, dot_max))
@@ -384,7 +399,9 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
         keys.append(color)
     df = __get_df(adata, adata_raw, keys)
     __fix_color_by_data_type(df, color)
-    return hvplot.scatter_matrix(df, c=color, **kwds)
+    p = hvplot.scatter_matrix(df, c=color, **kwds)
+    p.df = df
+    return p
 
 
 def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
@@ -453,6 +470,31 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
             colorbar=is_color_by_numeric,
             width=width, height=height, **keywords)
         plots.append(p)
+        p.bounds_stream = __create_bounds_stream(p)
     layout = hv.Layout(plots).cols(cols)
     layout.df = df_with_coords
     return layout
+
+
+def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = False, **kwds):
+    """
+    Generate an composition plot.
+
+    Parameters:
+    adata: Annotated data matrix.
+    by: Key for accessing variables of adata.var_names or a field of adata.obs used to group the data.
+    by_secondary: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
+    stacked: Whether bars are stacked.
+    """
+
+    adata_raw = __get_raw(adata, False)
+    keys = [by, count_by]
+    df = __get_df(adata, adata_raw, keys)
+    keywords = dict(stacked=stacked, rot=90, group_label=count_by)
+    keywords.update(kwds)
+    dummy = pd.get_dummies(df[count_by])
+    df = pd.concat([df, dummy], axis=1)
+    df = df.groupby('leiden_labels').agg('sum')
+    p = df.hvplot.bar(by, list(dummy.columns.values), **keywords)
+    p.df = df
+    return p
