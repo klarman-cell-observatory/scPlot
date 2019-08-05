@@ -404,13 +404,31 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     return p
 
 
+def __create_hover_tool(df, keywords, exclude, current):
+    try:
+        import bokeh.models
+        import holoviews.core.util
+        hover_cols = []
+        for column in df.columns:
+            if column not in exclude and column != current and column not in hover_cols:
+                hover_cols.append(column)
+        keywords['hover_cols'] = hover_cols
+        tooltips = []
+        tooltips.append((current, '@{' + holoviews.core.util.dimension_sanitizer(current) + '}'))
+        for hover_col in hover_cols:
+            tooltips.append((hover_col, '@{' + holoviews.core.util.dimension_sanitizer(hover_col) + '}'))
+        keywords['tools'] = [bokeh.models.HoverTool(tooltips=tooltips)]
+    except ModuleNotFoundError:
+        pass
+
+
 def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
               cmap: Union[str, List[str], Tuple[str]] = 'viridis',
               alpha: float = 1, size: int = 12,
               width: int = 400, height: int = 400,
               sort: bool = True, cols: int = 2,
               use_raw: bool = None, nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
-              labels_on_data: bool = False,
+              labels_on_data: bool = False, tooltips: Union[str, List[str], Tuple[str]] = None,
               **kwds):
     """
     Generate an embedding plot.
@@ -428,6 +446,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     cols: Number of columns for laying out multiple plots
     width: Plot width.
     height: Plot height.
+    tooltips: List of additional fields to show on hover.
     labels_on_data: Whether to draw labels for categorical features on the plot.
     use_raw: Use `raw` attribute of `adata` if present.
     """
@@ -438,6 +457,10 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     adata_raw = __get_raw(adata, use_raw)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
+    if tooltips is not None:
+        if not isinstance(tooltips, (list, tuple)):
+            tooltips = [tooltips]
+        keys += tooltips
     keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
         tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
@@ -451,17 +474,15 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
 
     if nbins is not None:
         df['count'] = 1.0
-        hover_cols = keywords.get('hover_cols', [])
-        hover_cols.append('count')
-        keywords['hover_cols'] = hover_cols
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
             reduce_function=reduce_function)
+
     for key in keys:
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
         df_to_plot = df
         if sort and is_color_by_numeric:
             df_to_plot = df.sort_values(by=key)
-
+        __create_hover_tool(df, keywords, exclude=coordinate_columns, current=key)
         p = df_to_plot.hvplot.scatter(
             x=coordinate_columns[0],
             y=coordinate_columns[1],
