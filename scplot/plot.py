@@ -119,7 +119,7 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     adata_raw = __get_raw(adata, use_raw)
 
     plots = []
-    keywords = dict(padding=0.02, cmap=cmap)
+    keywords = dict(padding=0.02, cmap=cmap, rot=90)
     keywords.update(kwds)
     if not isinstance(keys, (list, tuple, np.ndarray)):
         keys = [keys]
