@@ -10,3 +10,7 @@
 
 # 0.0.4, July 25, 2019
 - Improved dotplot tooltips
+
+# 0.0.5, August 5, 2019
+- Tooltip improvements for embedding plot
+- Added count_plot
