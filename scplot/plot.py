@@ -9,6 +9,24 @@ from anndata import AnnData
 from holoviews import dim
 
 
+def __create_hover_tool(df, keywords, exclude, current):
+    try:
+        import bokeh.models
+        import holoviews.core.util
+        hover_cols = []
+        for column in df.columns:
+            if column not in exclude and column != current and column not in hover_cols:
+                hover_cols.append(column)
+        keywords['hover_cols'] = hover_cols
+        tooltips = []
+        tooltips.append((current, '@{' + holoviews.core.util.dimension_sanitizer(current) + '}'))
+        for hover_col in hover_cols:
+            tooltips.append((hover_col, '@{' + holoviews.core.util.dimension_sanitizer(hover_col) + '}'))
+        keywords['tools'] = [bokeh.models.HoverTool(tooltips=tooltips)]
+    except ModuleNotFoundError:
+        pass
+
+
 def __create_bounds_stream(source):
     stream = hv.streams.BoundsXY(source=source)
     return stream
@@ -27,6 +45,8 @@ def get_bounds(plot):
 def __to_list(vals):
     if isinstance(vals, np.ndarray):
         vals = vals.tolist()
+    elif isinstance(vals, tuple):
+        vals = list(vals)
     elif not isinstance(vals, list):
         vals = [vals]
     return vals
@@ -319,7 +339,7 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
 
     adata_raw = __get_raw(adata, use_raw)
     keys = __to_list(keys)
-    keywords = dict(colorbar=True, ylabel=str(by), xlabel='', hover_cols=['fraction'], padding=0, rot=90, cmap=cmap)
+    keywords = dict(colorbar=True, ylabel=str(by), xlabel='', padding=0, rot=90, cmap=cmap)
 
     keywords.update(kwds)
     X = adata_raw[:, keys].X
@@ -350,10 +370,11 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
         fraction_max = fraction.max()
     size = np.interp(fraction, (fraction_min, fraction_max), (dot_min, dot_max))
     summary_values = mean_df.values.flatten()
-    # xlabel = [keys[i] for i in range(len(keys))]
-    # ylabel = [str(summarized.index[i]) for i in range(len(summarized.index))]
-    tmp_df = pd.DataFrame(
-        data=dict(x=x, y=y, value=summary_values, pixels=size, fraction=fraction))
+    xlabel = [keys[i] for i in range(len(keys))]
+    ylabel = [str(summarized.index[i]) for i in range(len(summarized.index))]
+    dotplot_df = pd.DataFrame(
+        data=dict(x=x, y=y, value=summary_values, pixels=size, fraction=fraction, xlabel=np.array(xlabel)[x],
+            ylabel=np.array(ylabel)[y]))
 
     xticks = [(i, keys[i]) for i in range(len(keys))]
     yticks = [(i, str(summarized.index[i])) for i in range(len(summarized.index))]
@@ -362,14 +383,17 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     keywords['height'] = int(np.ceil(dot_max * len(yticks) + 100))
     try:
         import bokeh.models
+        keywords['hover_cols'] = ['fraction', 'xlabel', 'ylabel']
         keywords['tools'] = [bokeh.models.HoverTool(tooltips=[
                 ('fraction', '@fraction'),
-                ('value', '@value')
+                ('value', '@value'),
+                ('x', '@xlabel'),
+                ('y', '@ylabel')
         ])]
     except ModuleNotFoundError:
         pass
 
-    p = tmp_df.hvplot.scatter(x='x', y='y', xlim=(-0.5, len(xticks) + 0.5), ylim=(-0.5, len(yticks) + 0.5),
+    p = dotplot_df.hvplot.scatter(x='x', y='y', xlim=(-0.5, len(xticks) + 0.5), ylim=(-0.5, len(yticks) + 0.5),
         c='value', s='pixels', xticks=xticks, yticks=yticks, **keywords)
 
     size_range = fraction_max - fraction_min
@@ -382,8 +406,10 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
 
     size_ticks = np.arange(fraction_min if fraction_min > 0 or fraction_min > 0 else fraction_min + size_legend_step,
         fraction_max + size_legend_step, size_legend_step)
-    return p + __size_legend(size_min=fraction_min, size_max=fraction_max, dot_min=dot_min, dot_max=dot_max,
+    result = p + __size_legend(size_min=fraction_min, size_max=fraction_max, dot_min=dot_min, dot_max=dot_max,
         size_tick_labels_format='{:.0%}', size_ticks=size_ticks)
+    result.df = dotplot_df
+    return result
 
 
 def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], color=None, use_raw: bool = None, **kwds):
@@ -406,24 +432,6 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     p = hvplot.scatter_matrix(df, c=color, **kwds)
     p.df = df
     return p
-
-
-def __create_hover_tool(df, keywords, exclude, current):
-    try:
-        import bokeh.models
-        import holoviews.core.util
-        hover_cols = []
-        for column in df.columns:
-            if column not in exclude and column != current and column not in hover_cols:
-                hover_cols.append(column)
-        keywords['hover_cols'] = hover_cols
-        tooltips = []
-        tooltips.append((current, '@{' + holoviews.core.util.dimension_sanitizer(current) + '}'))
-        for hover_col in hover_cols:
-            tooltips.append((hover_col, '@{' + holoviews.core.util.dimension_sanitizer(hover_col) + '}'))
-        keywords['tools'] = [bokeh.models.HoverTool(tooltips=tooltips)]
-    except ModuleNotFoundError:
-        pass
 
 
 def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
