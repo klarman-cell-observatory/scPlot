@@ -410,6 +410,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
               width: int = 400, height: int = 400,
               sort: bool = True, cols: int = 2,
               use_raw: bool = None, nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
+              labels_on_data: bool = False,
               **kwds):
     """
     Generate an embedding plot.
@@ -427,6 +428,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     cols: Number of columns for laying out multiple plots
     width: Plot width.
     height: Plot height.
+    labels_on_data: Whether to draw labels for categorical features on the plot.
     use_raw: Use `raw` attribute of `adata` if present.
     """
 
@@ -460,7 +462,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         if sort and is_color_by_numeric:
             df_to_plot = df.sort_values(by=key)
 
-        p = df_to_plot.hvplot.scatter(x=coordinate_columns[0],
+        p = df_to_plot.hvplot.scatter(
+            x=coordinate_columns[0],
             y=coordinate_columns[1],
             title=str(key),
             c=key if is_color_by_numeric else None,
@@ -469,22 +472,31 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
             alpha=alpha,
             colorbar=is_color_by_numeric,
             width=width, height=height, **keywords)
+        bounds_stream = __create_bounds_stream(p)
+        if not is_color_by_numeric and labels_on_data:
+            labels_df = df_to_plot[[coordinate_columns[0], coordinate_columns[1], key]].groupby(key).aggregate(
+                np.median)
+            labels = hv.Labels({('x', 'y'): labels_df, 'text': labels_df.index.values}, ['x', 'y'], 'text')
+            p = p * labels
+        p.bounds_stream = bounds_stream
         plots.append(p)
-        p.bounds_stream = __create_bounds_stream(p)
+
     layout = hv.Layout(plots).cols(cols)
     layout.df = df_with_coords
     return layout
 
 
-def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = False, **kwds):
+def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = False, normalize=True, **kwds):
     """
-    Generate an composition plot.
+    Generate a composition count plot.
 
     Parameters:
     adata: Annotated data matrix.
     by: Key for accessing variables of adata.var_names or a field of adata.obs used to group the data.
     by_secondary: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
+    reduce_function: Function used to summarize count_by groups
     stacked: Whether bars are stacked.
+    normalize: Normalize counts within each group to sum to one.
     """
 
     adata_raw = __get_raw(adata, False)
@@ -494,7 +506,9 @@ def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = False, **
     keywords.update(kwds)
     dummy = pd.get_dummies(df[count_by])
     df = pd.concat([df, dummy], axis=1)
-    df = df.groupby('leiden_labels').agg('sum')
+    df = df.groupby(by).agg(np.sum)
+    if normalize:
+        df /= df.sum(axis=0)
     p = df.hvplot.bar(by, list(dummy.columns.values), **keywords)
     p.df = df
     return p
