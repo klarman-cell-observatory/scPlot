@@ -24,6 +24,14 @@ def get_bounds(plot):
         return plot.bounds_stream.bounds
 
 
+def __to_list(vals):
+    if isinstance(vals, np.ndarray):
+        vals = vals.tolist()
+    elif not isinstance(vals, list):
+        vals = [vals]
+    return vals
+
+
 def __size_legend(size_min, size_max, dot_min, dot_max, size_tick_labels_format, size_ticks):
     # TODO improve
     size_ticks_pixels = np.interp(size_ticks, (size_min, size_max), (dot_min, dot_max))
@@ -121,8 +129,7 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     plots = []
     keywords = dict(padding=0.02, cmap=cmap, rot=90)
     keywords.update(kwds)
-    if not isinstance(keys, (list, tuple, np.ndarray)):
-        keys = [keys]
+    keys = __to_list(keys)
     df = __get_df(adata, adata_raw, keys + ([] if by is None else [by]))
     __fix_color_by_data_type(df, by)
     for key in keys:
@@ -148,8 +155,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     """
 
     adata_raw = __get_raw(adata, use_raw)
-    if not isinstance(keys, (list, tuple, np.ndarray)):
-        keys = [keys]
+    keys = __to_list(keys)
     df = None
     keywords = dict(colorbar=True, xlabel='', cmap=cmap, ylabel=str(by), rot=90)
 
@@ -312,8 +318,7 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     """
 
     adata_raw = __get_raw(adata, use_raw)
-    if not isinstance(keys, (list, tuple, np.ndarray)):
-        keys = [keys]
+    keys = __to_list(keys)
     keywords = dict(colorbar=True, ylabel=str(by), xlabel='', hover_cols=['fraction'], padding=0, rot=90, cmap=cmap)
 
     keywords.update(kwds)
@@ -393,8 +398,7 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     """
 
     adata_raw = __get_raw(adata, use_raw)
-    if not isinstance(keys, (list, tuple, np.ndarray)):
-        keys = [keys]
+    keys = __to_list(keys)
     if color is not None:
         keys.append(color)
     df = __get_df(adata, adata_raw, keys)
@@ -455,17 +459,16 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         keys = []
 
     adata_raw = __get_raw(adata, use_raw)
-    if not isinstance(keys, (list, tuple, np.ndarray)):
-        keys = [keys]
-    if tooltips is not None:
-        if not isinstance(tooltips, (list, tuple)):
-            tooltips = [tooltips]
-        keys += tooltips
+    keys = __to_list(keys)
+    if tooltips is None:
+        tooltips = []
+    tooltips = __to_list(tooltips)
     keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
         tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
     coordinate_columns = ['X_' + basis + c for c in ['1', '2']]
-    df = __get_df(adata, adata_raw, keys, pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns),
+    df = __get_df(adata, adata_raw, keys + tooltips,
+        pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns),
         is_obs=True)
     df_with_coords = df
     if len(keys) == 0:
