@@ -518,7 +518,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     return layout
 
 
-def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = False, normalize=True, **kwds):
+def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = True, normalize=True, **kwds):
     """
     Generate a composition count plot.
 
@@ -534,13 +534,18 @@ def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = False, no
     adata_raw = __get_raw(adata, False)
     keys = [by, count_by]
     df = __get_df(adata, adata_raw, keys)
-    keywords = dict(stacked=stacked, rot=90, group_label=count_by)
+    keywords = dict(stacked=stacked, group_label=count_by)
     keywords.update(kwds)
-    dummy = pd.get_dummies(df[count_by])
-    df = pd.concat([df, dummy], axis=1)
+    invert = keywords.get('invert', False)
+    if not invert and 'rot' not in keywords:
+        keywords['rot'] = 90
+
+    dummy_df = pd.get_dummies(df[count_by])
+    df = pd.concat([df, dummy_df], axis=1)
     df = df.groupby(by).agg(np.sum)
+
     if normalize:
-        df /= df.sum(axis=0)
-    p = df.hvplot.bar(by, list(dummy.columns.values), **keywords)
+        df = df.T.div(df.sum(axis=1)).T
+    p = df.hvplot.bar(by, list(dummy_df.columns.values), **keywords)
     p.df = df
     return p

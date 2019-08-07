@@ -14,3 +14,7 @@
 # 0.0.5, August 5, 2019
 - Tooltip improvements for embedding plot
 - Added count_plot
+
+# 0.0.6, August 7, 2019
+- Fixed normalization for count_plot
+- Changed default values for count_plot
