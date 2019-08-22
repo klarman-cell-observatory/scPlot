@@ -5,8 +5,22 @@ import hvplot.pandas
 import numpy as np
 import pandas as pd
 import scipy.sparse
+import scipy.stats
 from anndata import AnnData
 from holoviews import dim
+
+
+# def sort_by_values(summarized_df):
+#     # sort rows by expression
+#     sorted_df = summarized_df.sort_values(axis=0, by=list(summarized_df.columns.values), ascending=False)
+#     indices = [summarized_df.index.get_loc(c) for c in sorted_df.index]
+#     return indices
+
+
+def __auto_bin(df, nbins, width, height):
+    if nbins == -1 and df.shape[0] >= 500000:
+        nbins = int(max(200, min(width, height) / 2))
+    return nbins
 
 
 def __create_hover_tool(df, keywords, exclude, current):
@@ -129,19 +143,19 @@ def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_r
 
 
 def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = None,
-           width: int = 200, cmap: Union[str, List[str], Tuple[str]] = 'Category20', cols: int = 3,
-           use_raw: bool = None, **kwds):
+           width: int = 300, cmap: Union[str, List[str], Tuple[str]] = 'Category20', cols: int = 3,
+           use_raw: bool = None, **kwds) -> hv.core.element.Element:
     """
     Generate a violin plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    keys: Keys for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    by: Group plot by specified observation.
-    width: Plot width.
-    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    cols: Number of columns for laying out multiple plots
-    use_raw: Use `raw` attribute of `adata` if present.
+    Args:
+        adata: Annotated data matrix.
+        keys: Keys for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        by: Group plot by specified observation.
+        width: Plot width.
+        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        cols: Number of columns for laying out multiple plots
+        use_raw: Use `raw` attribute of `adata` if present.
     """
 
     adata_raw = __get_raw(adata, use_raw)
@@ -161,17 +175,17 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
 
 def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
             reduce_function: Callable[[np.ndarray], float] = np.mean,
-            use_raw: bool = None, cmap: Union[str, List[str], Tuple[str]] = 'Reds', **kwds):
+            use_raw: bool = None, cmap: Union[str, List[str], Tuple[str]] = 'Reds', **kwds) -> hv.core.element.Element:
     """
     Generate a heatmap.
 
-    Parameters:
-    adata: Annotated data matrix.
-    keys: Keys for accessing variables of adata.var_names
-    by: Group plot by specified observation.
-    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    reduce_function: Function to summarize an element in the heatmap
-    use_raw: Use `raw` attribute of `adata` if present.
+    Args:
+        adata: Annotated data matrix.
+        keys: Keys for accessing variables of adata.var_names
+        by: Group plot by specified observation.
+        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        reduce_function: Function to summarize an element in the heatmap
+        use_raw: Use `raw` attribute of `adata` if present.
     """
 
     adata_raw = __get_raw(adata, use_raw)
@@ -194,24 +208,24 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
 
 def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
             dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
-            nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
-            cmap: Union[str, List[str], Tuple[str]] = 'viridis', **kwds):
+            nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
+            cmap: Union[str, List[str], Tuple[str]] = 'viridis', **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    color: Field in .var_names, adata.var, or adata.obs to color the points by.
-    sort: Plot higher color by values on top of lower values.
-    size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
-    dot_min: Minimum dot size when sizing points by a field.
-    dot_max: Maximum dot size when sizing points by a field.
-    use_raw: Use `raw` attribute of `adata` if present.
-    nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
-    reduce_function: Function used to summarize overlapping cells if nbins is specified
+    Args:
+        adata: Annotated data matrix.
+        x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        color: Field in .var_names, adata.var, or adata.obs to color the points by.
+        sort: Plot higher color by values on top of lower values.
+        size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
+        dot_min: Minimum dot size when sizing points by a field.
+        dot_max: Maximum dot size when sizing points by a field.
+        use_raw: Use `raw` attribute of `adata` if present.
+        nbins: Number of bins used to summarize plot on a grid. Useful for large datasets. Negative one means automatically bin the plot.
+        reduce_function: Function used to summarize overlapping cells if nbins is specified
     """
     return __scatter(adata=adata, x=x, y=y, color=color, size=size, dot_min=dot_min, dot_max=dot_max, use_raw=use_raw,
         sort=sort, width=width, height=height, nbins=nbins, reduce_function=reduce_function, cmap=cmap, is_scatter=True,
@@ -220,17 +234,17 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
 
 def line(adata: AnnData, x: str, y: str,
          use_raw: bool = None, width: int = 400, height: int = 400,
-         nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean, **kwds):
+         nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean, **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    use_raw: Use `raw` attribute of `adata` if present.
-    nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
-    reduce_function: Function used to summarize overlapping cells if nbins is specified
+    Args:
+        adata: Annotated data matrix.
+        x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        use_raw: Use `raw` attribute of `adata` if present.
+        nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
+        reduce_function: Function used to summarize overlapping cells if nbins is specified
     """
     return __scatter(adata=adata, x=x, y=y, use_raw=use_raw, sort=False, width=width, height=height, nbins=nbins,
         reduce_function=reduce_function, is_scatter=False,
@@ -240,26 +254,27 @@ def line(adata: AnnData, x: str, y: str,
 def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
               dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
               nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
-              cmap: Union[str, List[str], Tuple[str]] = 'viridis', is_scatter=True, **kwds):
+              cmap: Union[str, List[str], Tuple[str]] = 'viridis', is_scatter=True, **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    color: Field in .var_names, adata.var, or adata.obs to color the points by.
-    sort: Plot higher color by values on top of lower values.
-    size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
-    dot_min: Minimum dot size when sizing points by a field.
-    dot_max: Maximum dot size when sizing points by a field.
-    use_raw: Use `raw` attribute of `adata` if present.
-    nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
-    reduce_function: Function used to summarize overlapping cells if nbins is specified
+    Args:
+        adata: Annotated data matrix.
+        x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
+        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        color: Field in .var_names, adata.var, or adata.obs to color the points by.
+        sort: Plot higher color by values on top of lower values.
+        size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
+        dot_min: Minimum dot size when sizing points by a field.
+        dot_max: Maximum dot size when sizing points by a field.
+        use_raw: Use `raw` attribute of `adata` if present.
+        nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
+        reduce_function: Function used to summarize overlapping cells if nbins is specified
     """
 
     adata_raw = __get_raw(adata, use_raw)
+
     keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, width=width,
         height=height, alpha=1, tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
@@ -272,9 +287,10 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
         keys.append(size)
 
     df = __get_df(adata, adata_raw, keys)
+    nbins = __auto_bin(df, nbins, width, height)
     df_with_coords = df
     hover_cols = keywords.get('hover_cols', [])
-    if nbins is not None:
+    if nbins is not None and nbins > 0:
         df['count'] = 1.0
         hover_cols.append('count')
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=[x, y], reduce_function=reduce_function)
@@ -318,23 +334,26 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
     return return_value
 
 
-def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, reduce_function=np.mean,
+def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
+            reduce_function: Callable[[np.ndarray], float] = np.mean,
             fraction_min: float = 0, fraction_max: float = None, dot_min: int = 0, dot_max: int = 14,
-            use_raw: bool = None, cmap: Union[str, List[str], Tuple[str]] = 'Reds', **kwds):
+            use_raw: bool = None, cmap: Union[str, List[str], Tuple[str]] = 'Reds',
+            sort_function: Callable[[pd.DataFrame], List[str]] = None, **kwds) -> hv.core.element.Element:
     """
     Generate a dot plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    keys: Keys for accessing variables of adata.var_names
-    by: Group plot by specified observation.
-    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    reduce_function: Function to summarize an element in the heatmap
-    fraction_min: Minimum fraction expressed value.
-    fraction_max: Maximum fraction expressed value.
-    dot_min: Minimum pixel dot size.
-    dot_max: Maximum pixel dot size.
-    use_raw: Use `raw` attribute of `adata` if present.
+    Args:
+        adata: Annotated data matrix.
+        keys: Keys for accessing variables of adata.var_names
+        by: Group plot by specified observation.
+        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        reduce_function: Function to summarize an element in the heatmap
+        fraction_min: Minimum fraction expressed value.
+        fraction_max: Maximum fraction expressed value.
+        dot_min: Minimum pixel dot size.
+        dot_max: Maximum pixel dot size.
+        use_raw: Use `raw` attribute of `adata` if present.
+        sort_function: Optional function that accepts summarized data frame and returns a list of row indices in the order to render in the heatmap.
     """
 
     adata_raw = __get_raw(adata, use_raw)
@@ -351,16 +370,20 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     def non_zero(g):
         return np.count_nonzero(g) / g.shape[0]
 
-    summarized = df.groupby(by).aggregate([reduce_function, non_zero])
+    summarized_df = df.groupby(by).aggregate([reduce_function, non_zero])
+    if sort_function is not None:
+        row_indices = sort_function(summarized_df)
+        summarized_df = summarized_df.iloc[row_indices]
     mean_columns = []
     frac_columns = []
-    for i in range(len(summarized.columns)):
+    for i in range(len(summarized_df.columns)):
         if i % 2 == 0:
-            mean_columns.append(summarized.columns[i])
+            mean_columns.append(summarized_df.columns[i])
         else:
-            frac_columns.append(summarized.columns[i])
-    fraction_df = summarized[frac_columns]
-    mean_df = summarized[mean_columns]
+            frac_columns.append(summarized_df.columns[i])
+    # features on columns, by on rows
+    fraction_df = summarized_df[frac_columns]
+    mean_df = summarized_df[mean_columns]
 
     y, x = np.indices(mean_df.shape)
     y = y.flatten()
@@ -371,13 +394,13 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     size = np.interp(fraction, (fraction_min, fraction_max), (dot_min, dot_max))
     summary_values = mean_df.values.flatten()
     xlabel = [keys[i] for i in range(len(keys))]
-    ylabel = [str(summarized.index[i]) for i in range(len(summarized.index))]
+    ylabel = [str(summarized_df.index[i]) for i in range(len(summarized_df.index))]
     dotplot_df = pd.DataFrame(
         data=dict(x=x, y=y, value=summary_values, pixels=size, fraction=fraction, xlabel=np.array(xlabel)[x],
             ylabel=np.array(ylabel)[y]))
 
     xticks = [(i, keys[i]) for i in range(len(keys))]
-    yticks = [(i, str(summarized.index[i])) for i in range(len(summarized.index))]
+    yticks = [(i, str(summarized_df.index[i])) for i in range(len(summarized_df.index))]
 
     keywords['width'] = int(np.ceil(dot_max * len(xticks) + 150))
     keywords['height'] = int(np.ceil(dot_max * len(yticks) + 100))
@@ -412,15 +435,16 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str, re
     return result
 
 
-def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], color=None, use_raw: bool = None, **kwds):
+def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], color=None, use_raw: bool = None,
+                   **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot matrix.
 
-    Parameters:
-    adata: Annotated data matrix.
-    keys: Key for accessing variables of adata.var_names or a field of adata.obs
-    color: Key in adata.obs to color points by.
-    use_raw: Use `raw` attribute of `adata` if present.
+    Args:
+        adata: Annotated data matrix.
+        keys: Key for accessing variables of adata.var_names or a field of adata.obs
+        color: Key in adata.obs to color points by.
+        use_raw: Use `raw` attribute of `adata` if present.
     """
 
     adata_raw = __get_raw(adata, use_raw)
@@ -439,28 +463,28 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
               alpha: float = 1, size: int = 12,
               width: int = 400, height: int = 400,
               sort: bool = True, cols: int = 2,
-              use_raw: bool = None, nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
+              use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
               labels_on_data: bool = False, tooltips: Union[str, List[str], Tuple[str]] = None,
-              **kwds):
+              **kwds) -> hv.core.element.Element:
     """
     Generate an embedding plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    keys: Key for accessing variables of adata.var_names or a field of adata.obs used to color the plot. Can also use `count` to plot cell count when binning.
-    basis: String in adata.obsm containing coordinates.
-    alpha: Points alpha value.
-    size: Point pixel size.
-    sort: Plot higher values on top of lower values.
-    cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
-    nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
-    reduce_function: Function used to summarize overlapping cells if nbins is specified.
-    cols: Number of columns for laying out multiple plots
-    width: Plot width.
-    height: Plot height.
-    tooltips: List of additional fields to show on hover.
-    labels_on_data: Whether to draw labels for categorical features on the plot.
-    use_raw: Use `raw` attribute of `adata` if present.
+    Args:
+        adata: Annotated data matrix.
+        keys: Key for accessing variables of adata.var_names or a field of adata.obs used to color the plot. Can also use `count` to plot cell count when binning.
+        basis: String in adata.obsm containing coordinates.
+        alpha: Points alpha value.
+        size: Point pixel size.
+        sort: Plot higher values on top of lower values.
+        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        nbins: Number of bins used to summarize plot on a grid. Useful for large datasets. Negative one means automatically bin the plot.
+        reduce_function: Function used to summarize overlapping cells if nbins is specified.
+        cols: Number of columns for laying out multiple plots
+        width: Plot width.
+        height: Plot height.
+        tooltips: List of additional fields to show on hover.
+        labels_on_data: Whether to draw labels for categorical features on the plot.
+        use_raw: Use `raw` attribute of `adata` if present.
     """
 
     if keys is None:
@@ -472,7 +496,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         tooltips = []
     tooltips = __to_list(tooltips)
     keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
-        tools=['box_select'], cmap=cmap)
+        tools=['box_select'], cmap=cmap, legend=not labels_on_data)
     keywords.update(kwds)
     coordinate_columns = ['X_' + basis + c for c in ['1', '2']]
     df = __get_df(adata, adata_raw, keys + tooltips,
@@ -482,8 +506,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     if len(keys) == 0:
         keys = ['count']
     plots = []
-
-    if nbins is not None:
+    nbins = __auto_bin(df, nbins, width, height)
+    if nbins is not None and nbins > 0:
         df['count'] = 1.0
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
             reduce_function=reduce_function)
@@ -518,34 +542,103 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     return layout
 
 
-def count_plot(adata: AnnData, by: str, count_by: str, stacked: bool = True, normalize=True, **kwds):
+def variable_feature_plot(adata: AnnData, **kwds) -> hv.core.element.Element:
     """
-    Generate a composition count plot.
+    Generate a variable feature plot.
 
-    Parameters:
-    adata: Annotated data matrix.
-    by: Key for accessing variables of adata.var_names or a field of adata.obs used to group the data.
-    by_secondary: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
-    reduce_function: Function used to summarize count_by groups
-    stacked: Whether bars are stacked.
-    normalize: Normalize counts within each group to sum to one.
+    Args:
+        adata: Annotated data matrix.
+   """
+
+    if 'hvf_loess' in adata.var:
+        keywords = dict(x='mean', y='var', y_fit='hvf_loess', color='highly_variable_features',
+            xlabel='Mean log expression', ylabel='Variance of log expression')
+    else:
+        keywords = dict(x='means', y='dispersions_norm', y_fit=None, color='highly_variable',
+            xlabel='Mean log expression', ylabel='Normalized dispersion')
+
+    keywords.update(kwds)
+    x = keywords.pop('x')
+    y = keywords.pop('y')
+    color = keywords.pop('color')
+    xlabel = keywords.pop('xlabel')
+    ylabel = keywords.pop('ylabel')
+    y_fit = keywords.pop('y_fit')
+    line_color = keywords.pop('line_color', 'black')
+
+    if y_fit is not None and y_fit in adata.var:
+        return scatter(adata, x=x, y=y, xlabel=xlabel, color=color,
+            ylabel=ylabel, **keywords) * line(adata, x=x, y=y_fit, line_color=line_color)
+    else:
+        return scatter(adata, x=x, y=y, color=color, xlabel=xlabel, ylabel=ylabel)
+
+
+def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = True, normalize: bool = True,
+                     stats: bool = True, **kwds) -> hv.core.element.Element:
     """
+     Generate a composition plot, which shows the percentage of observations from every condition within each cluster (by).
+
+     Args:
+         adata: Annotated data matrix.
+         by: Key for accessing variables of adata.var_names or a field of adata.obs used to group the data.
+         condition: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
+         reduce_function: Function used to summarize condition groups
+         stacked: Whether bars are stacked.
+         normalize: Normalize counts within each group to sum to one.
+         stats: Compute statistics for each group using the fisher exact test when condition has two groups and the chi square test otherwise.
+     """
 
     adata_raw = __get_raw(adata, False)
-    keys = [by, count_by]
+    keys = [by, condition]
     df = __get_df(adata, adata_raw, keys)
-    keywords = dict(stacked=stacked, group_label=count_by)
+    keywords = dict(stacked=stacked, group_label=condition)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
     if not invert and 'rot' not in keywords:
         keywords['rot'] = 90
 
-    dummy_df = pd.get_dummies(df[count_by])
+    dummy_df = pd.get_dummies(df[condition])
     df = pd.concat([df, dummy_df], axis=1)
     df = df.groupby(by).agg(np.sum)
-
+    cluster_p_values = None
+    obs = None
+    if stats:
+        #            condition_in, condition_out
+        # by_in
+        # by_out
+        cluster_p_values = np.ones(shape=df.shape[0])
+        scores = np.ones(shape=df.shape[0])
+        obs = []
+        p_value_func = scipy.stats.fisher_exact if df.shape[1] == 2 else scipy.stats.chi2_contingency
+        group_clusters_by_name = 'a_b'
+        counter = 1
+        while group_clusters_by_name in df.columns:
+            group_clusters_by_name = 'a_b-' + str(counter)
+        for i in range(df.shape[0]):  # each cluster
+            obs_df = df.copy()
+            cluster_in_out = ['a'] * df.shape[0]
+            cluster_in_out[i] = 'b'
+            obs_df[group_clusters_by_name] = cluster_in_out
+            obs_df = obs_df.groupby(group_clusters_by_name).agg(np.sum)
+            p_value_result = p_value_func(obs_df.values)
+            obs.append(obs_df.values)
+            cluster_p_values[i] = p_value_result[1]
+            scores[i] = p_value_result[0]
+        from statsmodels.stats.multitest import multipletests
+        _, fdr, _, _ = multipletests(cluster_p_values, alpha=0.05, method='fdr_bh')
+        bonferroni = np.minimum(cluster_p_values * len(cluster_p_values), 1.0)
+        cluster_p_values = pd.DataFrame(
+            data=dict(cluster=df.index, fdr=fdr, bonferroni=bonferroni, p_value=cluster_p_values))
+        cluster_p_values['fisher_exact_odds_ratio' if df.shape[1] == 2 else 'chi2'] = scores
+        cluster_p_values.sort_index(inplace=True, ascending=False)  # match order of bar plot
     if normalize:
         df = df.T.div(df.sum(axis=1)).T
+
     p = df.hvplot.bar(by, list(dummy_df.columns.values), **keywords)
+    if cluster_p_values is not None:
+        p = p + hv.Table(cluster_p_values)
+        p.cols(1)
     p.df = df
+    p.obs = obs
+    p.stats = cluster_p_values
     return p

@@ -15,6 +15,8 @@
 - Tooltip improvements for embedding plot
 - Added count_plot
 
-# 0.0.6, August 7, 2019
-- Fixed normalization for count_plot
-- Changed default values for count_plot
+# 0.0.7, August 22, 2019
+- Renamed count_plot to composition_plot
+- Added statistics to composition_plot
+- Added variable_feature_plot
+- Plots now auto-bin for large datasets
