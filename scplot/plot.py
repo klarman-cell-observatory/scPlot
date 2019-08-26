@@ -36,7 +36,8 @@ def __create_hover_tool(df, keywords, exclude, current):
         tooltips.append((current, '@{' + holoviews.core.util.dimension_sanitizer(current) + '}'))
         for hover_col in hover_cols:
             tooltips.append((hover_col, '@{' + holoviews.core.util.dimension_sanitizer(hover_col) + '}'))
-        keywords['tools'] = [bokeh.models.HoverTool(tooltips=tooltips)]
+        tools = keywords.get('tools', [])
+        keywords['tools'] = tools + [bokeh.models.HoverTool(tooltips=tooltips)]
     except ModuleNotFoundError:
         pass
 
@@ -143,7 +144,7 @@ def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_r
 
 
 def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = None,
-           width: int = 300, cmap: Union[str, List[str], Tuple[str]] = 'Category20', cols: int = 3,
+           width: int = 300, cmap: Union[str, List[str], Tuple[str]] = 'Category20', cols: int = None,
            use_raw: bool = None, **kwds) -> hv.core.element.Element:
     """
     Generate a violin plot.
@@ -157,7 +158,8 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
         cols: Number of columns for laying out multiple plots
         use_raw: Use `raw` attribute of `adata` if present.
     """
-
+    if cols is None:
+        cols = 3
     adata_raw = __get_raw(adata, use_raw)
 
     plots = []
@@ -166,6 +168,7 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     keys = __to_list(keys)
     df = __get_df(adata, adata_raw, keys + ([] if by is None else [by]))
     __fix_color_by_data_type(df, by)
+
     for key in keys:
         p = df.hvplot.violin(key, width=width, by=by, violin_color=by, **keywords)
         plots.append(p)
@@ -502,17 +505,22 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     df = __get_df(adata, adata_raw, keys + tooltips,
         pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns),
         is_obs=True)
-    df_with_coords = df
-    if len(keys) == 0:
-        keys = ['count']
-    plots = []
     nbins = __auto_bin(df, nbins, width, height)
-    if nbins is not None and nbins > 0:
+    df_with_coords = df
+    density = len(keys) == 0
+    if density:
+        keys = ['count']
+
+    bin_data = nbins is not None and nbins > 0
+    plots = []
+    if bin_data or density:
         df['count'] = 1.0
+    if bin_data:
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
             reduce_function=reduce_function)
 
     for key in keys:
+        __fix_color_by_data_type(df, key)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
         df_to_plot = df
         if sort and is_color_by_numeric:
