@@ -1,4 +1,4 @@
-from typing import Union, List, Tuple, Callable
+from typing import Union, List, Tuple, Callable, Set
 
 import holoviews as hv
 import hvplot.pandas
@@ -23,7 +23,16 @@ def __auto_bin(df, nbins, width, height):
     return nbins
 
 
-def __create_hover_tool(df, keywords, exclude, current):
+def __create_hover_tool(df, keywords: dict, exclude: List, current: str = None):
+    """
+   Generate hover tool.
+
+   Args:
+       keywords: Keyword dict
+       exclude: List of columns in df to exclude.
+       current: Key in df that is plotted to show 1st in tooltip
+   """
+
     try:
         import bokeh.models
         import holoviews.core.util
@@ -33,7 +42,8 @@ def __create_hover_tool(df, keywords, exclude, current):
                 hover_cols.append(column)
         keywords['hover_cols'] = hover_cols
         tooltips = []
-        tooltips.append((current, '@{' + holoviews.core.util.dimension_sanitizer(current) + '}'))
+        if current is not None:
+            tooltips.append((current, '@{' + holoviews.core.util.dimension_sanitizer(current) + '}'))
         for hover_col in hover_cols:
             tooltips.append((hover_col, '@{' + holoviews.core.util.dimension_sanitizer(hover_col) + '}'))
         tools = keywords.get('tools', [])
@@ -579,6 +589,61 @@ def variable_feature_plot(adata: AnnData, **kwds) -> hv.core.element.Element:
             ylabel=ylabel, **keywords) * line(adata, x=x, y=y_fit, line_color=line_color)
     else:
         return scatter(adata, x=x, y=y, color=color, xlabel=xlabel, ylabel=ylabel)
+
+
+def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y: str = 't_qval',
+            x_cutoff: float = 1, y_cutoff: float = 0.05, cluster_ids: Union[List, Tuple, Set] = None,
+            **kwds) -> hv.core.element.Element:
+    """
+    Generate a volcano plot.
+
+    Args:
+        adata: Annotated data matrix.
+        basis: String in adata.varm containing statistics to plot.
+        x: Field in basis to plot on x-axis. Field is assumed to end with :cluster_id (e.g. log_fold_change:1).
+        y: Field in basis to plot on y-axis. Field is assumed to end with :cluster_id (e.g. t_qval:1)..
+        x_cutoff: Highlight items >= x_cutoff or <=-x_cutoff
+        y_cutoff: Highlight items >= y_cutoff
+        cluster_ids: Optional list of cluster ids to include. If unspecified, plots are shown for all clusters.
+   """
+    de_results = adata.varm[basis]
+    names = de_results.dtype.names  # stat:cluster e.g. 'mwu_pval:13'
+    cluster_to_xy = {}
+    keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, alpha=1,
+        tools=['box_select'], hover_cols=['id'],
+        cmap={'Up': '#e41a1c', 'Down': '#377eb8', 'Not significant': '#bdbdbd'})
+
+    keywords.update(kwds)
+    for name in names:
+        xy_index = -1
+        if name.startswith(x):
+            xy_index = 0
+        elif name.startswith(y):
+            xy_index = 1
+        if xy_index != -1:
+            cluster_id = name[name.rindex(':') + 1:]
+            if cluster_ids is None or (cluster_ids is not None and cluster_id in cluster_ids):
+                xy = cluster_to_xy.get(cluster_id, None)
+                if xy is None:
+                    xy = [None, None]
+                    cluster_to_xy[cluster_id] = xy
+                xy[xy_index] = name
+    plots = []
+    cluster_ids = cluster_to_xy.keys()
+
+    for cluster_id in cluster_ids:
+        xy = cluster_to_xy[cluster_id]
+        if xy[0] is not None and xy[1] is not None:
+            df = pd.DataFrame(dict(id=adata.var.index.values, x=de_results[xy[0]], y=de_results[xy[1]]))
+            df['status'] = 'Not significant'
+            df.loc[(df['y'] <= y_cutoff) & (df['x'] >= x_cutoff), 'status'] = 'Up'
+            df.loc[(df['y'] <= y_cutoff) & (df['x'] < -x_cutoff), 'status'] = 'Down'
+            __create_hover_tool(df, keywords, ['y_log'])
+            df['y_log'] = -np.log10(df['y'] + 1e-12)
+            p = df.hvplot.scatter(x='x', y='y_log', title=str(
+                cluster_id), color='status', xlabel=str(x), ylabel='-log10 ' + str(y), **keywords)
+            plots.append(p)
+    return hv.Layout(plots).cols(1)
 
 
 def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = True, normalize: bool = True,
