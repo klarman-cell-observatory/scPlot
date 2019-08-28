@@ -23,3 +23,6 @@
 
 # 0.0.8, August 28, 2019
 - Added volcano plot
+
+# 0.0.9, August 28, 2019
+- Disabled linked brushing in volcano plot as it colors points incorrectly

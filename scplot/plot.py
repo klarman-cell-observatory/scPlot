@@ -658,7 +658,10 @@ def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y
         p = df.hvplot.scatter(x=x_column, y=y_log_column, title=str(
             cluster_id), c=status_column, xlabel=str(x), ylabel='-log10 ' + str(y), **keywords)
         plots.append(p)
-    return hv.Layout(plots).cols(1).opts(shared_datasource=True)  # shared_datasource for linked brushing
+    # TODO shared_datasource for linked brushing colors points incorrectly
+    result = hv.Layout(plots).cols(1)
+    result.df = df
+    return result
 
 
 def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = True, normalize: bool = True,
