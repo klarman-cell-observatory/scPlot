@@ -20,3 +20,6 @@
 - Added statistics to composition_plot
 - Added variable_feature_plot
 - Plots now auto-bin for large datasets
+
+# 0.0.8, August 28, 2019
+- Added volcano plot
