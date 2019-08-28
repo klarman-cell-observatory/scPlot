@@ -23,7 +23,7 @@ def __auto_bin(df, nbins, width, height):
     return nbins
 
 
-def __create_hover_tool(df, keywords: dict, exclude: List, current: str = None):
+def __create_hover_tool(df, keywords: dict, exclude: List, current: str = None, whitelist: List = None):
     """
    Generate hover tool.
 
@@ -38,7 +38,8 @@ def __create_hover_tool(df, keywords: dict, exclude: List, current: str = None):
         import holoviews.core.util
         hover_cols = []
         for column in df.columns:
-            if column not in exclude and column != current and column not in hover_cols:
+            if column not in exclude and column != current and column not in hover_cols and (
+                    whitelist is None or column in whitelist):
                 hover_cols.append(column)
         keywords['hover_cols'] = hover_cols
         tooltips = []
@@ -554,7 +555,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
             p = p * labels
         p.bounds_stream = bounds_stream
         plots.append(p)
-
+    # note that we can't link brushing because points are plotted in different order for each plot
     layout = hv.Layout(plots).cols(cols)
     layout.df = df_with_coords
     return layout
@@ -609,10 +610,12 @@ def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y
     de_results = adata.varm[basis]
     names = de_results.dtype.names  # stat:cluster e.g. 'mwu_pval:13'
     cluster_to_xy = {}
-    keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, alpha=1,
+
+    keywords = dict(fontsize=dict(title=9), nonselection_line_color=None, line_color='black',
+        selection_line_color='black', line_width=0.3, nonselection_alpha=0.05,
+        padding=0.02, xaxis=True, yaxis=True, alpha=0.9,
         tools=['box_select'], hover_cols=['id'],
         cmap={'Up': '#e41a1c', 'Down': '#377eb8', 'Not significant': '#bdbdbd'})
-
     keywords.update(kwds)
     for name in names:
         xy_index = -1
@@ -630,20 +633,32 @@ def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y
                 xy[xy_index] = name
     plots = []
     cluster_ids = cluster_to_xy.keys()
-
+    df = pd.DataFrame(dict(id=adata.var.index.values))
+    filtered_cluster_ids = []
     for cluster_id in cluster_ids:
         xy = cluster_to_xy[cluster_id]
         if xy[0] is not None and xy[1] is not None:
-            df = pd.DataFrame(dict(id=adata.var.index.values, x=de_results[xy[0]], y=de_results[xy[1]]))
-            df['status'] = 'Not significant'
-            df.loc[(df['y'] <= y_cutoff) & (df['x'] >= x_cutoff), 'status'] = 'Up'
-            df.loc[(df['y'] <= y_cutoff) & (df['x'] < -x_cutoff), 'status'] = 'Down'
-            __create_hover_tool(df, keywords, ['y_log'])
-            df['y_log'] = -np.log10(df['y'] + 1e-12)
-            p = df.hvplot.scatter(x='x', y='y_log', title=str(
-                cluster_id), color='status', xlabel=str(x), ylabel='-log10 ' + str(y), **keywords)
-            plots.append(p)
-    return hv.Layout(plots).cols(1)
+            filtered_cluster_ids.append(cluster_id)
+            x_column = '{}_{}'.format(x, cluster_id)
+            y_column = '{}_{}'.format(y, cluster_id)
+            y_log_column = '{}_{}_log'.format(y, cluster_id)
+            status_column = '{}_status'.format(cluster_id)
+            df[x_column] = de_results[xy[0]]
+            df[y_column] = de_results[xy[1]]
+            df[status_column] = 'Not significant'
+            df.loc[(df[y_column] <= y_cutoff) & (df[x_column] >= x_cutoff), status_column] = 'Up'
+            df.loc[(df[y_column] <= y_cutoff) & (df[x_column] < -x_cutoff), status_column] = 'Down'
+            df[y_log_column] = -np.log10(df[y_column] + 1e-12)
+    for cluster_id in filtered_cluster_ids:
+        x_column = '{}_{}'.format(x, cluster_id)
+        y_column = '{}_{}'.format(y, cluster_id)
+        y_log_column = '{}_{}_log'.format(y, cluster_id)
+        status_column = '{}_status'.format(cluster_id)
+        __create_hover_tool(df, keywords, exclude=[], whitelist=['id', x_column, y_column])
+        p = df.hvplot.scatter(x=x_column, y=y_log_column, title=str(
+            cluster_id), c=status_column, xlabel=str(x), ylabel='-log10 ' + str(y), **keywords)
+        plots.append(p)
+    return hv.Layout(plots).cols(1).opts(shared_datasource=True)  # shared_datasource for linked brushing
 
 
 def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = True, normalize: bool = True,
