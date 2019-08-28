@@ -8,6 +8,8 @@ import scipy.sparse
 import scipy.stats
 from anndata import AnnData
 from holoviews import dim
+from holoviews.plotting.links import Link
+from holoviews.plotting.bokeh.callbacks import LinkCallback
 
 
 # def sort_by_values(summarized_df):
@@ -119,7 +121,7 @@ def __get_df(adata, adata_raw, keys, df=None, is_obs=None):
             is_obs = key not in adata.var
             df = pd.DataFrame(data=dict(id=(adata.obs.index.values if is_obs else adata.var.index.values)))
         if key in adata_raw.var_names and is_obs:
-            X = adata_raw[:, key].X
+            X = adata_raw.obs_vector(key)
             if scipy.sparse.issparse(X):
                 X = X.toarray()
             df[key] = X
@@ -209,7 +211,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
 
     keywords.update(kwds)
     for key in keys:
-        X = adata_raw[:, key].X
+        X = adata_raw.obs_vector(key)
         if scipy.sparse.issparse(X):
             X = X.toarray()
         _df = pd.DataFrame(X, columns=['value'])
@@ -592,6 +594,24 @@ def variable_feature_plot(adata: AnnData, **kwds) -> hv.core.element.Element:
         return scatter(adata, x=x, y=y, color=color, xlabel=xlabel, ylabel=ylabel)
 
 
+class __BrushLink(Link):
+    _requires_target = True
+
+
+class __BrushLinkCallback(LinkCallback):
+    source_model = 'selected'
+    source_handles = ['cds']
+    on_source_changes = ['indices']
+    target_model = 'selected'
+
+    source_code = """
+        target_selected.indices = source_selected.indices;
+    """
+
+
+__BrushLink.register_callback('bokeh', __BrushLinkCallback)
+
+
 def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y: str = 't_qval',
             x_cutoff: float = 1, y_cutoff: float = 0.05, cluster_ids: Union[List, Tuple, Set] = None,
             **kwds) -> hv.core.element.Element:
@@ -658,7 +678,11 @@ def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y
         p = df.hvplot.scatter(x=x_column, y=y_log_column, title=str(
             cluster_id), c=status_column, xlabel=str(x), ylabel='-log10 ' + str(y), **keywords)
         plots.append(p)
-    # TODO shared_datasource for linked brushing colors points incorrectly
+    # shared_datasource for linked brushing colors points incorrectly
+    for i in range(len(plots)):
+        for j in range(i):
+            __BrushLink(plots[i], plots[j])
+            __BrushLink(plots[j], plots[i])
     result = hv.Layout(plots).cols(1)
     result.df = df
     return result
