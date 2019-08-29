@@ -3,6 +3,4 @@ dependencies:
   - pip
   - pip:
       - scplot
-      - anndata
-      - hvplot
 
