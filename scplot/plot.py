@@ -18,6 +18,69 @@ from holoviews.plotting.bokeh.callbacks import LinkCallback
 #     indices = [summarized_df.index.get_loc(c) for c in sorted_df.index]
 #     return indices
 
+# Doesn't work for scatter plots colored by categorical variable
+# class __BrushLinkRange(Link):
+#     _requires_target = True
+#
+#
+# class __BrushLinkCallbackRange(LinkCallback):
+#     source_model = 'selected'
+#     source_handles = ['cds', 'glyph']
+#     on_source_changes = ['indices']
+#     target_model = 'selected'
+#     target_handles = ['cds', 'glyph']
+#
+#     source_code = """
+#         var xmin = Number.MAX_VALUE;
+#         var xmax = -Number.MAX_VALUE;
+#         var ymin = Number.MAX_VALUE;
+#         var ymax = -Number.MAX_VALUE;
+#         var sourceX = source_cds.data[source_glyph.x.field];
+#         var sourceY = source_cds.data[source_glyph.y.field];
+#         var targetX = target_cds.data[target_glyph.x.field];
+#         var targetY = target_cds.data[target_glyph.y.field];
+#
+#         for(var i = 0, n = source_selected.indices.length; i < n; i++) {
+#             var index = source_selected.indices[i];
+#             var x = sourceX[index];
+#             var y = sourceY[index];
+#             xmin = Math.min(xmin, x);
+#             xmax = Math.max(xmax, x);
+#             ymin = Math.min(ymin, y);
+#             ymax = Math.max(ymax, y);
+#         }
+#         var indices = [];
+#         for(var i = 0, n = targetX.length; i < n; i++) {
+#             var x = targetX[i];
+#             var y = targetY[i];
+#             if(x >= xmin && x <= xmax && y >= ymin && y <=ymax) {
+#                 indices.push(i)
+#             }
+#         }
+#         target_selected.indices = indices;
+#     """
+#
+#
+# __BrushLinkRange.register_callback('bokeh', __BrushLinkCallbackRange)
+
+
+class __BrushLink(Link):
+    _requires_target = True
+
+
+class __BrushLinkCallback(LinkCallback):
+    source_model = 'selected'
+    source_handles = ['cds']
+    on_source_changes = ['indices']
+    target_model = 'selected'
+
+    source_code = """
+        target_selected.indices = source_selected.indices;
+    """
+
+
+__BrushLink.register_callback('bokeh', __BrushLinkCallback)
+
 
 def __auto_bin(df, nbins, width, height):
     if nbins == -1 and df.shape[0] >= 500000:
@@ -116,21 +179,31 @@ def __get_raw(adata, use_raw):
 def __get_df(adata, adata_raw, keys, df=None, is_obs=None):
     if df is not None and is_obs is None:
         raise ValueError('Please provide is_obs when df is provided.')
-    for key in keys:
+    for i in range(len(keys)):
+        key = keys[i]
         if df is None:
-            is_obs = key not in adata.var
+            if isinstance(key, np.ndarray):
+                is_obs = len(key) == adata.shape[0]
+            else:
+                is_obs = key not in adata.var
             df = pd.DataFrame(data=dict(id=(adata.obs.index.values if is_obs else adata.var.index.values)))
-        if key in adata_raw.var_names and is_obs:
+        if isinstance(key, np.ndarray):
+            values = key
+            key = str(i)
+            keys[i] = key
+        elif key in adata_raw.var_names and is_obs:
             X = adata_raw.obs_vector(key)
+            #  X = adata_raw[:, key].X
             if scipy.sparse.issparse(X):
                 X = X.toarray()
-            df[key] = X
+            values = X
         elif key in adata.obs and is_obs:
-            df[key] = adata.obs[key].values
+            values = adata.obs[key].values
         elif key in adata.var and not is_obs:
-            df[key] = adata.var[key].values
+            values = adata.var[key].values
         else:
             raise ValueError('{} not found'.format(key))
+        df[key] = values
     return df
 
 
@@ -212,6 +285,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     keywords.update(kwds)
     for key in keys:
         X = adata_raw.obs_vector(key)
+        # X = adata_raw[:, key].X
         if scipy.sparse.issparse(X):
             X = X.toarray()
         _df = pd.DataFrame(X, columns=['value'])
@@ -222,7 +296,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     return df.hvplot.heatmap(x='feature', y=by, C='value', reduce_function=reduce_function, **keywords)
 
 
-def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
+def scatter(adata: AnnData, x: str, y: str, color: str = None, size: Union[int, str] = None,
             dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
             nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
             cmap: Union[str, List[str], Tuple[str]] = 'viridis', **kwds) -> hv.core.element.Element:
@@ -236,6 +310,8 @@ def scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = 
         cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
         color: Field in .var_names, adata.var, or adata.obs to color the points by.
         sort: Plot higher color by values on top of lower values.
+        width: Chart width.
+        height: Chart height.
         size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
         dot_min: Minimum dot size when sizing points by a field.
         dot_max: Maximum dot size when sizing points by a field.
@@ -259,6 +335,8 @@ def line(adata: AnnData, x: str, y: str,
         x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
         y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
         use_raw: Use `raw` attribute of `adata` if present.
+        width: Chart width.
+        height: Chart height.
         nbins: Number of bins used to summarize plot on a grid. Useful for large datasets.
         reduce_function: Function used to summarize overlapping cells if nbins is specified
     """
@@ -290,19 +368,27 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
     """
 
     adata_raw = __get_raw(adata, use_raw)
-
+    is_size_by = size is not None and is_scatter
+    is_color_by = color is not None and is_scatter
     keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, width=width,
         height=height, alpha=1, tools=['box_select'], cmap=cmap)
     keywords.update(kwds)
-
     keys = [x, y]
-    if color is not None and is_scatter:
+    if is_color_by:
         keys.append(color)
-    is_size_by = isinstance(size, str)
-    if is_size_by and is_scatter:
+    if is_size_by:
         keys.append(size)
 
     df = __get_df(adata, adata_raw, keys)
+
+    # keys might have been modified by __get_df if key was an array instead of a string
+    x = keys[0]
+    y = keys[1]
+    if is_color_by:
+        color = keys[2]
+    if is_size_by:
+        size = keys[3 if is_color_by else 2]
+
     nbins = __auto_bin(df, nbins, width, height)
     df_with_coords = df
     hover_cols = keywords.get('hover_cols', [])
@@ -313,7 +399,7 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
     else:
         hover_cols.append('id')
     keywords['hover_cols'] = hover_cols
-    if color is not None and is_scatter:
+    if is_color_by:
         __fix_color_by_data_type(df, color)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
         if is_color_by_numeric:
@@ -332,11 +418,9 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
         hover_cols = keywords.get('hover_cols', [])
         hover_cols.append(size)
         keywords['hover_cols'] = hover_cols
-    elif size is not None:
-        keywords['size'] = size
     if is_scatter:
         p = df.hvplot.scatter(x=x, y=y, **keywords)
-    else:
+    else:  # line plot
         df = df.sort_values(by=x)
         p = df.hvplot.line(x=x, y=y, **keywords)
 
@@ -557,7 +641,12 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
             p = p * labels
         p.bounds_stream = bounds_stream
         plots.append(p)
-    # note that we can't link brushing because points are plotted in different order for each plot
+
+    # for i in range(len(plots)):
+    #     for j in range(i):
+    #         __BrushLinkRange(plots[i], plots[j])
+    #         __BrushLinkRange(plots[j], plots[i])
+
     layout = hv.Layout(plots).cols(cols)
     layout.df = df_with_coords
     return layout
@@ -592,24 +681,6 @@ def variable_feature_plot(adata: AnnData, **kwds) -> hv.core.element.Element:
             ylabel=ylabel, **keywords) * line(adata, x=x, y=y_fit, line_color=line_color)
     else:
         return scatter(adata, x=x, y=y, color=color, xlabel=xlabel, ylabel=ylabel)
-
-
-class __BrushLink(Link):
-    _requires_target = True
-
-
-class __BrushLinkCallback(LinkCallback):
-    source_model = 'selected'
-    source_handles = ['cds']
-    on_source_changes = ['indices']
-    target_model = 'selected'
-
-    source_code = """
-        target_selected.indices = source_selected.indices;
-    """
-
-
-__BrushLink.register_callback('bokeh', __BrushLinkCallback)
 
 
 def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y: str = 't_qval',
