@@ -8,8 +8,8 @@ import scipy.sparse
 import scipy.stats
 from anndata import AnnData
 from holoviews import dim
-from holoviews.plotting.links import Link
 from holoviews.plotting.bokeh.callbacks import LinkCallback
+from holoviews.plotting.links import Link
 
 
 # def sort_by_values(summarized_df):
@@ -80,6 +80,10 @@ class __BrushLinkCallback(LinkCallback):
 
 
 __BrushLink.register_callback('bokeh', __BrushLinkCallback)
+
+
+def __get_marker_size(count):
+    return (240000.0 if count > 300000 else 120000.0) / count
 
 
 def __auto_bin(df, nbins, width, height):
@@ -560,7 +564,7 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
 
 def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
               cmap: Union[str, List[str], Tuple[str]] = 'viridis',
-              alpha: float = 1, size: int = 12,
+              alpha: float = 1, size: float = None,
               width: int = 400, height: int = 400,
               sort: bool = True, cols: int = 2,
               use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
@@ -616,6 +620,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
             reduce_function=reduce_function)
 
+    if size is None:
+        size = __get_marker_size(df.shape[0])
     for key in keys:
         __fix_color_by_data_type(df, key)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
