@@ -29,3 +29,7 @@
 
 # 0.0.10, August 29, 2019
 - Fixed linked brushing in volcano plot
+
+# 0.0.11, September 20, 2019 
+- Automatically determine point size, changed default categorical color map and updated
+legend options for embedding plot

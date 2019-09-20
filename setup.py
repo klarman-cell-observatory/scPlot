@@ -25,7 +25,7 @@ test_requirements = [
 
 setuptools.setup(
     name='scplot',
-    version='0.0.10',
+    version='0.0.11',
     author="Joshua Gould",
     author_email='jgould@broadinstitute.org',
     description="Single cell plotting",
