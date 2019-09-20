@@ -1,5 +1,6 @@
 from typing import Union, List, Tuple, Callable, Set
 
+import colorcet
 import holoviews as hv
 import hvplot.pandas
 import numpy as np
@@ -83,7 +84,7 @@ __BrushLink.register_callback('bokeh', __BrushLinkCallback)
 
 
 def __get_marker_size(count):
-    return (240000.0 if count > 300000 else 120000.0) / count
+    return min(12, (240000.0 if count > 300000 else 120000.0) / count)
 
 
 def __auto_bin(df, nbins, width, height):
@@ -234,7 +235,7 @@ def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_r
 
 
 def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = None,
-           width: int = 300, cmap: Union[str, List[str], Tuple[str]] = 'Category20', cols: int = None,
+           width: int = 300, cmap: Union[str, List[str], Tuple[str]] = None, cols: int = None,
            use_raw: bool = None, **kwds) -> hv.core.element.Element:
     """
     Generate a violin plot.
@@ -251,7 +252,8 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     if cols is None:
         cols = 3
     adata_raw = __get_raw(adata, use_raw)
-
+    if cmap is None:
+        cmap = colorcet.b_glasbey_category10
     plots = []
     keywords = dict(padding=0.02, cmap=cmap, rot=90)
     keywords.update(kwds)
@@ -303,7 +305,8 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
 def scatter(adata: AnnData, x: str, y: str, color: str = None, size: Union[int, str] = None,
             dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
             nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
-            cmap: Union[str, List[str], Tuple[str]] = 'viridis', **kwds) -> hv.core.element.Element:
+            cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
+            **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot.
 
@@ -311,7 +314,8 @@ def scatter(adata: AnnData, x: str, y: str, color: str = None, size: Union[int, 
         adata: Annotated data matrix.
         x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
         y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        cmap: Color map for continuous variables.
+        palette: Color map for categorical variables.
         color: Field in .var_names, adata.var, or adata.obs to color the points by.
         sort: Plot higher color by values on top of lower values.
         width: Chart width.
@@ -324,8 +328,8 @@ def scatter(adata: AnnData, x: str, y: str, color: str = None, size: Union[int, 
         reduce_function: Function used to summarize overlapping cells if nbins is specified
     """
     return __scatter(adata=adata, x=x, y=y, color=color, size=size, dot_min=dot_min, dot_max=dot_max, use_raw=use_raw,
-        sort=sort, width=width, height=height, nbins=nbins, reduce_function=reduce_function, cmap=cmap, is_scatter=True,
-        **kwds)
+        sort=sort, width=width, height=height, nbins=nbins, reduce_function=reduce_function, cmap=cmap, palette=palette,
+        is_scatter=True, **kwds)
 
 
 def line(adata: AnnData, x: str, y: str,
@@ -352,7 +356,8 @@ def line(adata: AnnData, x: str, y: str,
 def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
               dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
               nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
-              cmap: Union[str, List[str], Tuple[str]] = 'viridis', is_scatter=True, **kwds) -> hv.core.element.Element:
+              cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
+              is_scatter=True, **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot.
 
@@ -360,7 +365,8 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
         adata: Annotated data matrix.
         x: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
         y: Key for accessing variables of adata.var_names, field of adata.var, or field of adata.obs
-        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        cmap: Color map for continous variables.
+        palette: Color map for categorical variables.
         color: Field in .var_names, adata.var, or adata.obs to color the points by.
         sort: Plot higher color by values on top of lower values.
         size: Field in .var_names, adata.var, or adata.obs to size the points by or a pixel size.
@@ -375,7 +381,7 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
     is_size_by = size is not None and is_scatter
     is_color_by = color is not None and is_scatter
     keywords = dict(fontsize=dict(title=9), nonselection_alpha=0.1, padding=0.02, xaxis=True, yaxis=True, width=width,
-        height=height, alpha=1, tools=['box_select'], cmap=cmap)
+        height=height, alpha=1, tools=['box_select'])
     keywords.update(kwds)
     keys = [x, y]
     if is_color_by:
@@ -406,6 +412,10 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
     if is_color_by:
         __fix_color_by_data_type(df, color)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
+        if is_color_by_numeric:
+            keywords['cmap'] = 'viridis' if cmap is None else cmap
+        else:
+            keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
         if is_color_by_numeric:
             keywords.update(dict(colorbar=True, c=color))
             if sort:
@@ -563,13 +573,13 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
 
 
 def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
-              cmap: Union[str, List[str], Tuple[str]] = 'viridis',
+              cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
               alpha: float = 1, size: float = None,
               width: int = 400, height: int = 400,
               sort: bool = True, cols: int = 2,
               use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
-              labels_on_data: bool = False, tooltips: Union[str, List[str], Tuple[str]] = None,
-              **kwds) -> hv.core.element.Element:
+              legend: str = 'right', tooltips: Union[str, List[str], Tuple[str]] = None,
+              legend_font_size: Union[int, str] = None, **kwds) -> hv.core.element.Element:
     """
     Generate an embedding plot.
 
@@ -580,14 +590,16 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         alpha: Points alpha value.
         size: Point pixel size.
         sort: Plot higher values on top of lower values.
-        cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
+        cmap: Color map for continous variables.
+        palette: Color map for categorical variables.
         nbins: Number of bins used to summarize plot on a grid. Useful for large datasets. Negative one means automatically bin the plot.
         reduce_function: Function used to summarize overlapping cells if nbins is specified.
         cols: Number of columns for laying out multiple plots
         width: Plot width.
         height: Plot height.
         tooltips: List of additional fields to show on hover.
-        labels_on_data: Whether to draw labels for categorical features on the plot.
+        legend: `top', 'bottom', 'left', 'right', or 'data' to draw labels for categorical features on the plot.
+        legend_font_size: Font size for `labels_on_data`
         use_raw: Use `raw` attribute of `adata` if present.
     """
 
@@ -599,8 +611,13 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     if tooltips is None:
         tooltips = []
     tooltips = __to_list(tooltips)
-    keywords = dict(fontsize=dict(title=9), padding=0.02, xaxis=False, yaxis=False, nonselection_alpha=0.1,
-        tools=['box_select'], cmap=cmap, legend=not labels_on_data)
+    if legend_font_size is None:
+        legend_font_size = '12pt'
+    labels_on_data = legend == 'data'
+    keywords = dict(fontsize=dict(title=9, legend=legend_font_size), padding=0.02, xaxis=False, yaxis=False,
+        nonselection_alpha=0.1,
+        tools=['box_select'], legend=not legend == 'data')
+
     keywords.update(kwds)
     coordinate_columns = ['X_' + basis + c for c in ['1', '2']]
     df = __get_df(adata, adata_raw, keys + tooltips,
@@ -629,6 +646,11 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         if sort and is_color_by_numeric:
             df_to_plot = df.sort_values(by=key)
         __create_hover_tool(df, keywords, exclude=coordinate_columns, current=key)
+        if is_color_by_numeric:
+            keywords['cmap'] = 'viridis' if cmap is None else cmap
+        else:
+            keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
+
         p = df_to_plot.hvplot.scatter(
             x=coordinate_columns[0],
             y=coordinate_columns[1],
@@ -643,7 +665,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         if not is_color_by_numeric and labels_on_data:
             labels_df = df_to_plot[[coordinate_columns[0], coordinate_columns[1], key]].groupby(key).aggregate(
                 np.median)
-            labels = hv.Labels({('x', 'y'): labels_df, 'text': labels_df.index.values}, ['x', 'y'], 'text')
+            labels = hv.Labels({('x', 'y'): labels_df, 'text': labels_df.index.values}, ['x', 'y'], 'text').opts(
+                text_font_size=legend_font_size)
             p = p * labels
         p.bounds_stream = bounds_stream
         plots.append(p)
@@ -774,7 +797,6 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
          adata: Annotated data matrix.
          by: Key for accessing variables of adata.var_names or a field of adata.obs used to group the data.
          condition: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
-         reduce_function: Function used to summarize condition groups
          stacked: Whether bars are stacked.
          normalize: Normalize counts within each group to sum to one.
          stats: Compute statistics for each group using the fisher exact test when condition has two groups and the chi square test otherwise.
@@ -783,7 +805,7 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
     adata_raw = __get_raw(adata, False)
     keys = [by, condition]
     df = __get_df(adata, adata_raw, keys)
-    keywords = dict(stacked=stacked, group_label=condition)
+    keywords = dict(stacked=stacked, group_label=condition, cmap=colorcet.b_glasbey_category10)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
     if not invert and 'rot' not in keywords:
