@@ -4,5 +4,4 @@ pandas
 numpy
 holoviews
 scipy
-statsmodels
 colorcet

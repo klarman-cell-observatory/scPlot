@@ -9,7 +9,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 requirements = [
-        'anndata', 'colorcet', 'hvplot', 'pandas', 'numpy', 'holoviews', 'scipy', 'statsmodels'
+        'anndata', 'colorcet', 'hvplot', 'pandas', 'numpy', 'holoviews', 'scipy'
 ]
 
 extras_require = {

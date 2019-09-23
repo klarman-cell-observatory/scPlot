@@ -6,7 +6,6 @@ import hvplot.pandas
 import numpy as np
 import pandas as pd
 import scipy.sparse
-import scipy.stats
 from anndata import AnnData
 from holoviews import dim
 from holoviews.plotting.bokeh.callbacks import LinkCallback
@@ -792,7 +791,7 @@ def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y
 
 
 def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = True, normalize: bool = True,
-                     stats: bool = True, **kwds) -> hv.core.element.Element:
+                     **kwds) -> hv.core.element.Element:
     """
      Generate a composition plot, which shows the percentage of observations from every condition within each cluster (by).
 
@@ -802,7 +801,6 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
          condition: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
          stacked: Whether bars are stacked.
          normalize: Normalize counts within each group to sum to one.
-         stats: Compute statistics for each group using the fisher exact test when condition has two groups and the chi square test otherwise.
      """
 
     adata_raw = __get_raw(adata, False)
@@ -817,45 +815,10 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
     dummy_df = pd.get_dummies(df[condition])
     df = pd.concat([df, dummy_df], axis=1)
     df = df.groupby(by).agg(np.sum)
-    cluster_p_values = None
-    obs = None
-    if stats:
-        #            condition_in, condition_out
-        # by_in
-        # by_out
-        cluster_p_values = np.ones(shape=df.shape[0])
-        scores = np.ones(shape=df.shape[0])
-        obs = []
-        p_value_func = scipy.stats.fisher_exact if df.shape[1] == 2 else scipy.stats.chi2_contingency
-        group_clusters_by_name = 'a_b'
-        counter = 1
-        while group_clusters_by_name in df.columns:
-            group_clusters_by_name = 'a_b-' + str(counter)
-        for i in range(df.shape[0]):  # each cluster
-            obs_df = df.copy()
-            cluster_in_out = ['a'] * df.shape[0]
-            cluster_in_out[i] = 'b'
-            obs_df[group_clusters_by_name] = cluster_in_out
-            obs_df = obs_df.groupby(group_clusters_by_name).agg(np.sum)
-            p_value_result = p_value_func(obs_df.values)
-            obs.append(obs_df.values)
-            cluster_p_values[i] = p_value_result[1]
-            scores[i] = p_value_result[0]
-        from statsmodels.stats.multitest import multipletests
-        _, fdr, _, _ = multipletests(cluster_p_values, alpha=0.05, method='fdr_bh')
-        bonferroni = np.minimum(cluster_p_values * len(cluster_p_values), 1.0)
-        cluster_p_values = pd.DataFrame(
-            data=dict(cluster=df.index, fdr=fdr, bonferroni=bonferroni, p_value=cluster_p_values))
-        cluster_p_values['fisher_exact_odds_ratio' if df.shape[1] == 2 else 'chi2'] = scores
-        cluster_p_values.sort_index(inplace=True, ascending=False)  # match order of bar plot
+
     if normalize:
         df = df.T.div(df.sum(axis=1)).T
 
     p = df.hvplot.bar(by, list(dummy_df.columns.values), **keywords)
-    if cluster_p_values is not None:
-        p = p + hv.Table(cluster_p_values)
-        p.cols(1)
     p.df = df
-    p.obs = obs
-    p.stats = cluster_p_values
     return p
