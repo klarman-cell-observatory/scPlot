@@ -33,3 +33,9 @@
 # 0.0.11, September 20, 2019 
 - Automatically determine point size, changed default categorical color map and updated
 legend options for embedding plot
+
+# 0.0.12, September 23, 2019 
+- Removed statistics from composition_plot
+- Handle non-categorical object data types when binning
+- Automatically determine the number of columns in embedding plot
+
