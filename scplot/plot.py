@@ -225,12 +225,13 @@ def __bin(df, nbins, coordinate_columns, reduce_function, coordinate_column_to_r
 
     agg_func = {}
     for column in df:
-        if column == 'count':
-            agg_func[column] = 'sum'
-        elif pd.api.types.is_categorical_dtype(df[column]):
-            agg_func[column] = lambda x: x.mode()[0]
-        elif column not in coordinate_columns and pd.api.types.is_numeric_dtype(df[column]):
-            agg_func[column] = reduce_function
+        if column not in coordinate_columns:
+            if column == 'count':
+                agg_func[column] = 'sum'
+            elif pd.api.types.is_numeric_dtype(df[column]):
+                agg_func[column] = reduce_function
+            else:  # pd.api.types.is_categorical_dtype(df[column]):
+                agg_func[column] = lambda x: x.mode()[0]
     return df.groupby(coordinate_columns, as_index=False).agg(agg_func), df[coordinate_columns]
 
 
@@ -516,8 +517,8 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     xticks = [(i, keys[i]) for i in range(len(keys))]
     yticks = [(i, str(summarized_df.index[i])) for i in range(len(summarized_df.index))]
 
-    keywords['width'] = int(np.ceil(dot_max * len(xticks) + 150))
-    keywords['height'] = int(np.ceil(dot_max * len(yticks) + 100))
+    keywords['width'] = int(np.ceil((dot_max + 1) * len(xticks) + 150))
+    keywords['height'] = int(np.ceil((dot_max + 1) * len(yticks) + 100))
     try:
         import bokeh.models
         keywords['hover_cols'] = ['fraction', 'xlabel', 'ylabel']
@@ -576,7 +577,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
               cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
               alpha: float = 1, size: float = None,
               width: int = 400, height: int = 400,
-              sort: bool = True, cols: int = 2,
+              sort: bool = True, cols: int = None,
               use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
               legend: str = 'right', tooltips: Union[str, List[str], Tuple[str]] = None,
               legend_font_size: Union[int, str] = None, **kwds) -> hv.core.element.Element:
@@ -614,7 +615,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     if legend_font_size is None:
         legend_font_size = '12pt'
     labels_on_data = legend == 'data'
-    keywords = dict(fontsize=dict(title=9, legend=legend_font_size), padding=0.02, xaxis=False, yaxis=False,
+    keywords = dict(fontsize=dict(title=9, legend=legend_font_size), padding=0.02 if not labels_on_data else 0.05,
+        xaxis=False, yaxis=False,
         nonselection_alpha=0.1,
         tools=['box_select'], legend=not legend == 'data')
 
@@ -675,7 +677,8 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     #     for j in range(i):
     #         __BrushLinkRange(plots[i], plots[j])
     #         __BrushLinkRange(plots[j], plots[i])
-
+    if cols is None:
+        cols = 1 if width > 500 else 2
     layout = hv.Layout(plots).cols(cols)
     layout.df = df_with_coords
     return layout
