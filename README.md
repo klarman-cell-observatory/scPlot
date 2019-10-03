@@ -1,6 +1,6 @@
 # scPlot
 
-Plotting tools for [scCloud](https://sccloud.readthedocs.io/en/latest/)
+Single cell interactive plotting tools
 
 
 ## Installation
