@@ -410,12 +410,17 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
         hover_cols.append('id')
     keywords['hover_cols'] = hover_cols
     if is_color_by:
-        __fix_color_by_data_type(df, color)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
+        if not is_color_by_numeric:
+            __fix_color_by_data_type(df, color)
         if is_color_by_numeric:
             keywords['cmap'] = 'viridis' if cmap is None else cmap
+            if 'color' in keywords:
+                del keywords['color']
         else:
             keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
+            if 'cmap' in keywords:
+                del keywords['cmap']
         if is_color_by_numeric:
             keywords.update(dict(colorbar=True, c=color))
             if sort:
@@ -641,16 +646,21 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
     if size is None:
         size = __get_marker_size(df.shape[0])
     for key in keys:
-        __fix_color_by_data_type(df, key)
         is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
+        if not is_color_by_numeric:
+            __fix_color_by_data_type(df, key)
         df_to_plot = df
         if sort and is_color_by_numeric:
             df_to_plot = df.sort_values(by=key)
         __create_hover_tool(df, keywords, exclude=coordinate_columns, current=key)
         if is_color_by_numeric:
             keywords['cmap'] = 'viridis' if cmap is None else cmap
+            if 'color' in keywords:
+                del keywords['color']
         else:
             keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
+            if 'cmap' in keywords:
+                del keywords['cmap']
 
         p = df_to_plot.hvplot.scatter(
             x=coordinate_columns[0],
@@ -806,6 +816,9 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
     adata_raw = __get_raw(adata, False)
     keys = [by, condition]
     df = __get_df(adata, adata_raw, keys)
+    for column in df:
+        if not pd.api.types.is_categorical_dtype(df[column]):
+            df[column] = df[column].astype(str).astype('category')
     keywords = dict(stacked=stacked, group_label=condition, cmap=colorcet.b_glasbey_category10)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
