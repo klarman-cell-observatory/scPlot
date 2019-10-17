@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""The setup script."""
 
 import setuptools
 
@@ -12,20 +11,10 @@ requirements = [
         'anndata', 'colorcet', 'hvplot', 'pandas', 'numpy', 'holoviews', 'scipy'
 ]
 
-extras_require = {
-}
-
-setup_requirements = [
-
-]
-
-test_requirements = [
-
-]
-
 setuptools.setup(
+    use_scm_version=True,
+    setup_requires=['setuptools_scm'],
     name='scplot',
-    version='0.0.12',
     author="Joshua Gould",
     author_email='jgould@broadinstitute.org',
     description="Single cell plotting",
@@ -37,7 +26,7 @@ setuptools.setup(
     install_requires=requirements,
     license="BSD license",
     zip_safe=False,
-    keywords='wot',
+    keywords='plot',
     classifiers=[
             'License :: OSI Approved :: BSD License',
             'Intended Audience :: Developers',
@@ -52,7 +41,5 @@ setuptools.setup(
             'Topic :: Scientific/Engineering :: Bio-Informatics',
             'Topic :: Scientific/Engineering :: Visualization',
     ],
-    test_suite='tests',
-    tests_require=test_requirements,
-    setup_requires=setup_requirements
+    test_suite='tests'
 )
