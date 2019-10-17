@@ -1,3 +1,6 @@
+# 0.0.13, October 17, 2019 
+- Handle additional data types in composition_plot
+
 # 0.0.12, September 23, 2019 
 - Removed statistics from composition_plot
 - Handle non-categorical object data types when binning
