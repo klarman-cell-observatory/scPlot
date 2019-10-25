@@ -19,49 +19,24 @@ from holoviews.plotting.links import Link
 #     return indices
 
 # Doesn't work for scatter plots colored by categorical variable
-# class __BrushLinkRange(Link):
-#     _requires_target = True
-#
-#
-# class __BrushLinkCallbackRange(LinkCallback):
-#     source_model = 'selected'
-#     source_handles = ['cds', 'glyph']
-#     on_source_changes = ['indices']
-#     target_model = 'selected'
-#     target_handles = ['cds', 'glyph']
-#
-#     source_code = """
-#         var xmin = Number.MAX_VALUE;
-#         var xmax = -Number.MAX_VALUE;
-#         var ymin = Number.MAX_VALUE;
-#         var ymax = -Number.MAX_VALUE;
-#         var sourceX = source_cds.data[source_glyph.x.field];
-#         var sourceY = source_cds.data[source_glyph.y.field];
-#         var targetX = target_cds.data[target_glyph.x.field];
-#         var targetY = target_cds.data[target_glyph.y.field];
-#
-#         for(var i = 0, n = source_selected.indices.length; i < n; i++) {
-#             var index = source_selected.indices[i];
-#             var x = sourceX[index];
-#             var y = sourceY[index];
-#             xmin = Math.min(xmin, x);
-#             xmax = Math.max(xmax, x);
-#             ymin = Math.min(ymin, y);
-#             ymax = Math.max(ymax, y);
-#         }
-#         var indices = [];
-#         for(var i = 0, n = targetX.length; i < n; i++) {
-#             var x = targetX[i];
-#             var y = targetY[i];
-#             if(x >= xmin && x <= xmax && y >= ymin && y <=ymax) {
-#                 indices.push(i)
-#             }
-#         }
-#         target_selected.indices = indices;
-#     """
-#
-#
-# __BrushLinkRange.register_callback('bokeh', __BrushLinkCallbackRange)
+class __BrushLinkRange(Link):
+    _requires_target = True
+
+
+class __BrushLinkCallbackRange(LinkCallback):
+    source_model = 'selected'
+    source_handles = ['cds', 'glyph']
+    on_source_changes = ['indices']
+    target_model = 'selected'
+    target_handles = ['cds', 'glyph']
+
+    source_code = """
+       
+        target_selected.indices = source_selected.indices;
+    """
+
+
+__BrushLinkRange.register_callback('bokeh', __BrushLinkCallbackRange)
 
 
 class __BrushLink(Link):
@@ -577,11 +552,12 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     return p
 
 
-def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tuple[str]] = None,
+def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
+              keys: Union[None, str, List[str], Tuple[str]] = None,
               cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
               alpha: float = 1, size: float = None,
               width: int = 400, height: int = 400,
-              sort: bool = True, cols: int = None,
+              sort: bool = True, cols: int = None, sort_order: bool = True,
               use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
               legend: str = 'right', tooltips: Union[str, List[str], Tuple[str]] = None,
               legend_font_size: Union[int, str] = None, **kwds) -> hv.core.element.Element:
@@ -610,7 +586,7 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
 
     if keys is None:
         keys = []
-
+    basis = __to_list(basis)
     adata_raw = __get_raw(adata, use_raw)
     keys = __to_list(keys)
     if tooltips is None:
@@ -623,69 +599,73 @@ def embedding(adata: AnnData, basis: str, keys: Union[None, str, List[str], Tupl
         xaxis=False, yaxis=False,
         nonselection_alpha=0.1,
         tools=['box_select'], legend=not legend == 'data')
-
+    plots = []
+    numeric_plots = []
     keywords.update(kwds)
-    coordinate_columns = ['X_' + basis + c for c in ['1', '2']]
-    df = __get_df(adata, adata_raw, keys + tooltips,
-        pd.DataFrame(adata.obsm['X_' + basis][:, 0:2], columns=coordinate_columns),
-        is_obs=True)
-    nbins = __auto_bin(df, nbins, width, height)
-    df_with_coords = df
+    data_df = __get_df(adata, adata_raw, keys + tooltips, is_obs=True)
     density = len(keys) == 0
     if density:
         keys = ['count']
 
-    bin_data = nbins is not None and nbins > 0
-    plots = []
-    if bin_data or density:
-        df['count'] = 1.0
-    if bin_data:
-        df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
-            reduce_function=reduce_function)
+    for b in basis:
+        df = data_df.copy()
+        coordinate_columns = ['X_' + b + c for c in ['1', '2']]
+        df = pd.concat((df, pd.DataFrame(adata.obsm['X_' + b][:, 0:2], columns=coordinate_columns)), axis=1)
+        nbins = __auto_bin(df, nbins, width, height)
+        df_with_coords = df
+        bin_data = nbins is not None and nbins > 0
 
-    if size is None:
-        size = __get_marker_size(df.shape[0])
-    for key in keys:
-        is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
-        if not is_color_by_numeric:
-            __fix_color_by_data_type(df, key)
-        df_to_plot = df
-        if sort and is_color_by_numeric:
-            df_to_plot = df.sort_values(by=key)
-        __create_hover_tool(df, keywords, exclude=coordinate_columns, current=key)
-        if is_color_by_numeric:
-            keywords['cmap'] = 'viridis' if cmap is None else cmap
-            if 'color' in keywords:
-                del keywords['color']
-        else:
-            keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
-            if 'cmap' in keywords:
-                del keywords['cmap']
+        if bin_data or density:
+            df['count'] = 1.0
+        if bin_data:
+            df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
+                reduce_function=reduce_function)
 
-        p = df_to_plot.hvplot.scatter(
-            x=coordinate_columns[0],
-            y=coordinate_columns[1],
-            title=str(key),
-            c=key if is_color_by_numeric else None,
-            by=key if not is_color_by_numeric else None,
-            size=size,
-            alpha=alpha,
-            colorbar=is_color_by_numeric,
-            width=width, height=height, **keywords)
-        bounds_stream = __create_bounds_stream(p)
-        if not is_color_by_numeric and labels_on_data:
-            labels_df = df_to_plot[[coordinate_columns[0], coordinate_columns[1], key]].groupby(key).aggregate(
-                np.median)
-            labels = hv.Labels({('x', 'y'): labels_df, 'text': labels_df.index.values}, ['x', 'y'], 'text').opts(
-                text_font_size=legend_font_size)
-            p = p * labels
-        p.bounds_stream = bounds_stream
-        plots.append(p)
+        if size is None:
+            size = __get_marker_size(df.shape[0])
 
-    # for i in range(len(plots)):
-    #     for j in range(i):
-    #         __BrushLinkRange(plots[i], plots[j])
-    #         __BrushLinkRange(plots[j], plots[i])
+        for key in keys:
+            is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
+            if not is_color_by_numeric:
+                __fix_color_by_data_type(df, key)
+            df_to_plot = df
+            if sort and is_color_by_numeric:
+                df_to_plot = df.sort_values(by=key)
+            __create_hover_tool(df, keywords, exclude=coordinate_columns, current=key)
+            if is_color_by_numeric:
+                keywords['cmap'] = 'viridis' if cmap is None else cmap
+                if 'color' in keywords:
+                    del keywords['color']
+            else:
+                keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
+                if 'cmap' in keywords:
+                    del keywords['cmap']
+
+            p = df_to_plot.hvplot.scatter(
+                x=coordinate_columns[0],
+                y=coordinate_columns[1],
+                title=str(key),
+                c=key if is_color_by_numeric else None,
+                by=key if not is_color_by_numeric else None,
+                size=size,
+                alpha=alpha,
+                colorbar=is_color_by_numeric,
+                width=width, height=height, **keywords)
+            bounds_stream = __create_bounds_stream(p)
+            if is_color_by_numeric and not sort:
+                numeric_plots.append(p)
+            if not is_color_by_numeric and labels_on_data:
+                labels_df = df_to_plot[[coordinate_columns[0], coordinate_columns[1], key]].groupby(key).aggregate(
+                    np.median)
+                labels = hv.Labels({('x', 'y'): labels_df, 'text': labels_df.index.values}, ['x', 'y'], 'text').opts(
+                    text_font_size=legend_font_size)
+                p = p * labels
+            p.bounds_stream = bounds_stream
+            plots.append(p)
+    for i in range(len(numeric_plots)):
+        for j in range(i):
+            __BrushLinkRange(numeric_plots[i], numeric_plots[j])
+            __BrushLinkRange(numeric_plots[j], numeric_plots[i])
     if cols is None:
         cols = 1 if width > 500 else 2
     layout = hv.Layout(plots).cols(cols)
