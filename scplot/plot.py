@@ -555,9 +555,8 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
 def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
               keys: Union[None, str, List[str], Tuple[str]] = None,
               cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
-              alpha: float = 1, size: float = None,
-              width: int = 400, height: int = 400,
-              sort: bool = True, cols: int = None, sort_order: bool = True,
+              alpha: float = 1, size: float = None, width: int = 400, height: int = 400, sort: bool = True,
+              cols: int = None, brush_categorical: bool = False,
               use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
               legend: str = 'right', tooltips: Union[str, List[str], Tuple[str]] = None,
               legend_font_size: Union[int, str] = None, **kwds) -> hv.core.element.Element:
@@ -570,7 +569,8 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
         basis: String in adata.obsm containing coordinates.
         alpha: Points alpha value.
         size: Point pixel size.
-        sort: Plot higher values on top of lower values.
+        sort: Plot higher values on top of lower values. Disable for linked brushing.
+        brush_categorical: Enable linked brushing on categorical variables (disables categorical legend).
         cmap: Color map for continous variables.
         palette: Color map for categorical variables.
         nbins: Number of bins used to summarize plot on a grid. Useful for large datasets. Negative one means automatically bin the plot.
@@ -632,27 +632,35 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
             if sort and is_color_by_numeric:
                 df_to_plot = df.sort_values(by=key)
             __create_hover_tool(df, keywords, exclude=coordinate_columns, current=key)
+            color_keyword_keep = 'cmap'
+            color_keyword_delete = 'color'
             if is_color_by_numeric:
-                keywords['cmap'] = 'viridis' if cmap is None else cmap
-                if 'color' in keywords:
-                    del keywords['color']
+                color = 'viridis' if cmap is None else cmap
             else:
-                keywords['color'] = colorcet.b_glasbey_category10 if palette is None else palette
-                if 'cmap' in keywords:
-                    del keywords['cmap']
-
+                if not brush_categorical:
+                    color_keyword_keep = 'color'
+                    color_keyword_delete = 'cmap'
+                color = colorcet.b_glasbey_category10 if palette is None else palette
+            keywords[color_keyword_keep] = color
+            if color_keyword_delete in keywords:
+                del keywords['color']
+            if not is_color_by_numeric and brush_categorical:
+                if not pd.api.types.is_categorical_dtype(df[key]):
+                    df[key] = df[key].astype('category')
+                df[key] = df[key].astype(int)
+            use_c = is_color_by_numeric or brush_categorical
             p = df_to_plot.hvplot.scatter(
                 x=coordinate_columns[0],
                 y=coordinate_columns[1],
                 title=str(key),
-                c=key if is_color_by_numeric else None,
-                by=key if not is_color_by_numeric else None,
+                c=key if use_c else None,
+                by=key if not use_c else None,
                 size=size,
                 alpha=alpha,
                 colorbar=is_color_by_numeric,
                 width=width, height=height, **keywords)
             bounds_stream = __create_bounds_stream(p)
-            if is_color_by_numeric and not sort:
+            if use_c and not sort and not bin_data:
                 numeric_plots.append(p)
             if not is_color_by_numeric and labels_on_data:
                 labels_df = df_to_plot[[coordinate_columns[0], coordinate_columns[1], key]].groupby(key).aggregate(
