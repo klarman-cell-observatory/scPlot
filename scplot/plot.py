@@ -807,7 +807,12 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
     for column in df:
         if not pd.api.types.is_categorical_dtype(df[column]):
             df[column] = df[column].astype(str).astype('category')
-    keywords = dict(stacked=stacked, group_label=condition, cmap=colorcet.b_glasbey_category10)
+    # respect stored categorical colors, if available
+    if f'{condition}_colors' in adata.uns_keys():
+        cmap = adata.uns[f'{condition}_colors']
+    else:
+        cmap=colorcet.b_glasbey_category10
+    keywords = dict(stacked=stacked, group_label=condition, cmap=cmap)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
     if not invert and 'rot' not in keywords:
