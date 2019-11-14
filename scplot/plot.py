@@ -279,7 +279,7 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
 
 def scatter(adata: AnnData, x: str, y: str, color: str = None, size: Union[int, str] = None,
             dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
-            nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
+            nbins: int = -1, reduce_function: Callable[[np.array], float] = np.max,
             cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
             **kwds) -> hv.core.element.Element:
     """
@@ -309,7 +309,7 @@ def scatter(adata: AnnData, x: str, y: str, color: str = None, size: Union[int, 
 
 def line(adata: AnnData, x: str, y: str,
          use_raw: bool = None, width: int = 400, height: int = 400,
-         nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean, **kwds) -> hv.core.element.Element:
+         nbins: int = None, reduce_function: Callable[[np.array], float] = np.max, **kwds) -> hv.core.element.Element:
     """
     Generate a scatter plot.
 
@@ -330,7 +330,7 @@ def line(adata: AnnData, x: str, y: str,
 
 def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] = None,
               dot_min=2, dot_max=14, use_raw: bool = None, sort: bool = True, width: int = 400, height: int = 400,
-              nbins: int = None, reduce_function: Callable[[np.array], float] = np.mean,
+              nbins: int = None, reduce_function: Callable[[np.array], float] = np.max,
               cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
               is_scatter=True, **kwds) -> hv.core.element.Element:
     """
@@ -557,7 +557,7 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
               cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
               alpha: float = 1, size: float = None, width: int = 400, height: int = 400, sort: bool = True,
               cols: int = None, brush_categorical: bool = False,
-              use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.mean,
+              use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.max,
               legend: str = 'right', tooltips: Union[str, List[str], Tuple[str]] = None,
               legend_font_size: Union[int, str] = None, **kwds) -> hv.core.element.Element:
     """
