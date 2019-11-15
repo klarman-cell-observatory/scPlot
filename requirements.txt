@@ -1,7 +1,8 @@
 anndata
-hvplot
-pandas
-numpy
-holoviews
-scipy
 colorcet
+holoviews
+hvplot
+natsort
+numpy
+pandas
+scipy

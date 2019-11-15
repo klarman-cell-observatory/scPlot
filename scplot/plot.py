@@ -10,6 +10,8 @@ from anndata import AnnData
 from holoviews import dim
 from holoviews.plotting.bokeh.callbacks import LinkCallback
 from holoviews.plotting.links import Link
+from natsort import natsorted
+from pandas.api.types import CategoricalDtype
 
 
 # def sort_by_values(summarized_df):
@@ -59,6 +61,13 @@ __BrushLink.register_callback('bokeh', __BrushLinkCallback)
 
 def __get_marker_size(count):
     return min(12, (240000.0 if count > 300000 else 120000.0) / count)
+
+
+def __sort_category(df, by):
+    if not pd.api.types.is_categorical_dtype(df[by]):
+        df[by] = df[by].astype('category')
+    if not df[by].dtype.ordered:
+        df[by] = df[by].astype(CategoricalDtype(natsorted(df[by].dtype.categories), ordered=True))
 
 
 def __auto_bin(df, nbins, width, height):
@@ -123,27 +132,26 @@ def __to_list(vals):
 
 
 def __size_legend(size_min, size_max, dot_min, dot_max, size_tick_labels_format, size_ticks):
-    # TODO improve
     size_ticks_pixels = np.interp(size_ticks, (size_min, size_max), (dot_min, dot_max))
     size_tick_labels = [size_tick_labels_format.format(x) for x in size_ticks]
     points = hv.Points(
-        {'x': np.repeat(0.1, len(size_ticks)), 'y': np.arange(len(size_ticks), 0, -1),
+        {'x': np.repeat(0.15, len(size_ticks)), 'y': np.arange(len(size_ticks), 0, -1),
          'size': size_ticks_pixels},
         vdims='size').opts(xaxis=None, color='black', yaxis=None, size=dim('size'))
     labels = hv.Labels(
-        {'x': np.repeat(0.2, len(size_ticks)), 'y': np.arange(len(size_ticks), 0, -1),
+        {'x': np.repeat(0.3, len(size_ticks)), 'y': np.arange(len(size_ticks), 0, -1),
          'text': size_tick_labels},
         ['x', 'y'], 'text').opts(text_align='left', text_font_size='9pt')
     overlay = (points * labels)
-    overlay.opts(width=125, height=int(len(size_ticks) * (dot_max + 12)), xlim=(0, 1),
+    overlay.opts(width=dot_max + 100, height=int(len(size_ticks) * (dot_max + 12)), xlim=(0, 1),
         ylim=(0, len(size_ticks) + 1),
         invert_yaxis=True, shared_axes=False, show_frame=False)
     return overlay
 
 
 def __fix_color_by_data_type(df, by):
-    if by is not None and (pd.api.types.is_categorical_dtype(df[by]) or pd.api.types.is_bool_dtype(df[by])):
-        df[by] = df[by].astype(str)  # hvplot does not currently handle categorical or boolean type for colors
+    if by is not None and pd.api.types.is_bool_dtype(df[by]):
+        df[by] = df[by].astype(str).astype('category')  # hvplot does not handle boolean type for colors
 
 
 def __get_raw(adata, use_raw):
@@ -235,7 +243,8 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     keys = __to_list(keys)
     df = __get_df(adata, adata_raw, keys + ([] if by is None else [by]))
     __fix_color_by_data_type(df, by)
-
+    if by is not None:
+        __sort_category(df, by)
     for key in keys:
         p = df.hvplot.violin(key, width=width, by=by, violin_color=by, **keywords)
         plots.append(p)
@@ -274,6 +283,8 @@ def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
         _df[by] = adata.obs[by].values
         df = _df if df is None else pd.concat((df, _df))
 
+    __sort_category(df, by)
+    df['feature'] = df['feature'].astype(CategoricalDtype(keys, ordered=True))
     return df.hvplot.heatmap(x='feature', y=by, C='value', reduce_function=reduce_function, **keywords)
 
 
@@ -430,7 +441,7 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
 
 def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
             reduce_function: Callable[[np.ndarray], float] = np.mean,
-            fraction_min: float = 0, fraction_max: float = None, dot_min: int = 0, dot_max: int = 14,
+            fraction_min: float = 0, fraction_max: float = None, dot_min: int = 0, dot_max: int = 20,
             use_raw: bool = None, cmap: Union[str, List[str], Tuple[str]] = 'Reds',
             sort_function: Callable[[pd.DataFrame], List[str]] = None, **kwds) -> hv.core.element.Element:
     """
@@ -465,9 +476,12 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
         return np.count_nonzero(g) / g.shape[0]
 
     summarized_df = df.groupby(by).aggregate([reduce_function, non_zero])
-    if sort_function is not None:
+    if sort_function is not None:  # sort categories
         row_indices = sort_function(summarized_df)
         summarized_df = summarized_df.iloc[row_indices]
+    else:
+        summarized_df = summarized_df.loc[natsorted(summarized_df.index, reverse=True)]
+
     mean_columns = []
     frac_columns = []
     for i in range(len(summarized_df.columns)):
@@ -496,7 +510,7 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     xticks = [(i, keys[i]) for i in range(len(keys))]
     yticks = [(i, str(summarized_df.index[i])) for i in range(len(summarized_df.index))]
 
-    keywords['width'] = int(np.ceil((dot_max + 1) * len(xticks) + 150))
+    keywords['width'] = int(np.ceil((dot_max + 1) * len(xticks) + dot_max + 130))
     keywords['height'] = int(np.ceil((dot_max + 1) * len(yticks) + 100))
     try:
         import bokeh.models
@@ -641,13 +655,13 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
                     color_keyword_keep = 'color'
                     color_keyword_delete = 'cmap'
                 color = colorcet.b_glasbey_category10 if palette is None else palette
+                __sort_category(df_to_plot, key)
             keywords[color_keyword_keep] = color
             if color_keyword_delete in keywords:
                 del keywords['color']
             if not is_color_by_numeric and brush_categorical:
                 if not pd.api.types.is_categorical_dtype(df[key]):
                     df[key] = df[key].astype('category')
-                df[key] = df[key].astype(str)
             use_c = is_color_by_numeric or brush_categorical
             p = df_to_plot.hvplot.scatter(
                 x=coordinate_columns[0],
@@ -819,7 +833,7 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
 
     if normalize:
         df = df.T.div(df.sum(axis=1)).T
-
+    df = df.loc[natsorted(df.index)]
     p = df.hvplot.bar(by, list(dummy_df.columns.values), **keywords)
     p.df = df
     return p
