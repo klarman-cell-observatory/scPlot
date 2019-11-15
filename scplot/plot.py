@@ -647,7 +647,7 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
             if not is_color_by_numeric and brush_categorical:
                 if not pd.api.types.is_categorical_dtype(df[key]):
                     df[key] = df[key].astype('category')
-                df[key] = df[key].astype(int)
+                df[key] = df[key].astype(str)
             use_c = is_color_by_numeric or brush_categorical
             p = df_to_plot.hvplot.scatter(
                 x=coordinate_columns[0],
