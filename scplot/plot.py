@@ -111,7 +111,7 @@ def __get_cmap(adata, df, key, as_dict=True):
         try:
             import scanpy
             scanpy.plotting._utils.add_colors_for_categorical_sample_annotation(adata, key)
-        except ImportError:
+        except ModuleNotFoundError:
             pass
         color_key = f"{key}_colors"
         if color_key in adata.uns:
