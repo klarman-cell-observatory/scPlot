@@ -1,3 +1,9 @@
+# 0.0.14, November 20, 2019 
+- Use `natsort` to sort categories
+- Use colors specified in anndata.uns if available
+- Change default binning aggregation method from mean to max
+- Added option to link brushing across multiple embeddings
+
 # 0.0.13, October 17, 2019 
 - Handle additional data types in composition_plot
 
