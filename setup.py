@@ -8,7 +8,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 requirements = [
-        'anndata', 'colorcet', 'hvplot', 'pandas', 'numpy', 'holoviews', 'natsort', 'scipy'
+        'anndata',
+        'colorcet',
+        'holoviews',
+        'hvplot',
+        'natsort',
+        'numpy',
+        'pandas',
+        'scipy'
 ]
 
 setuptools.setup(
