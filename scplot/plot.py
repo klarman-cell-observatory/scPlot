@@ -117,9 +117,7 @@ def __get_cmap(adata, df, key, as_dict=True):
         if color_key in adata.uns:
             colors = adata.uns[color_key]
             adata_categories = adata.obs[key].cat.categories
-
             if len(colors) == len(adata_categories):
-
                 color_map = {}
                 for i in range(len(colors)):
                     color_map[adata_categories[i]] = colors[i]
@@ -839,6 +837,7 @@ def volcano(adata: AnnData, basis: str = 'de_res', x: str = 'log_fold_change', y
 
 
 def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = True, normalize: bool = True,
+                     condition_sort_by: str = None, cmap: Union[str, List[str], Tuple[str]] = None,
                      **kwds) -> hv.core.element.Element:
     """
      Generate a composition plot, which shows the percentage of observations from every condition within each cluster (by).
@@ -849,27 +848,44 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
          condition: Key for accessing variables of adata.var_names or a field of adata.obs used to compute counts within a group.
          stacked: Whether bars are stacked.
          normalize: Normalize counts within each group to sum to one.
+         condition_sort_by: Sort condition within each group by max, mean, natsorted, or None.
+         cmap: Color map name (hv.plotting.list_cmaps()) or a list of hex colors. See http://holoviews.org/user_guide/Styling_Plots.html for more information.
      """
 
     adata_raw = __get_raw(adata, False)
     keys = [by, condition]
-    df = __get_df(adata, adata_raw, keys)
-    for column in df:
-        if not pd.api.types.is_categorical_dtype(df[column]):
-            df[column] = df[column].astype(str).astype('category')
-    keywords = dict(stacked=stacked, group_label=condition, cmap=__get_cmap(adata, df, by))
+    adata_df = __get_df(adata, adata_raw, keys)
+
+    for column in adata_df:
+        if not pd.api.types.is_categorical_dtype(adata_df[column]):
+            adata_df[column] = adata_df[column].astype(str).astype('category')
+    if cmap is None:
+        cmap = __get_cmap(adata, adata_df, by)
+    keywords = dict(stacked=stacked, group_label=condition)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
     if not invert and 'rot' not in keywords:
         keywords['rot'] = 90
 
-    dummy_df = pd.get_dummies(df[condition])
-    df = pd.concat([df, dummy_df], axis=1)
+    dummy_df = pd.get_dummies(adata_df[condition])
+    df = pd.concat([adata_df, dummy_df], axis=1)
     df = df.groupby(by).agg(np.sum)
 
     if normalize:
         df = df.T.div(df.sum(axis=1)).T
-    df = df.loc[natsorted(df.index)]
-    p = df.hvplot.bar(by, list(dummy_df.columns.values), **keywords)
+
+    if not (pd.api.types.is_categorical_dtype(df.index) and df.index.dtype.ordered):
+        df = df.loc[natsorted(df.index)]
+
+    secondary = dummy_df.columns.values
+
+    if condition_sort_by == 'max' or condition_sort_by == 'mean':
+        secondary_sort = df.values.max(axis=0) if condition_sort_by == 'max' else df.values.mean(axis=0)
+        index = np.flip(np.argsort(secondary_sort))
+        secondary = secondary[index]
+    elif condition_sort_by == 'natsorted':
+        secondary = natsorted(secondary)
+    secondary = list(secondary)
+    p = df.hvplot.bar(by, secondary, cmap=cmap, **keywords)
     p.df = df
     return p
