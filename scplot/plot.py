@@ -106,31 +106,85 @@ def __create_hover_tool(df, keywords: dict, exclude: List, current: str = None, 
         pass
 
 
-def __get_cmap(adata, df, key, as_dict=True):
+scanpy_default_102 = ['#FFFF00', '#1CE6FF', '#FF34FF', '#FF4A46', '#008941', '#006FA6', '#A30059', '#FFDBE5', '#7A4900',
+                      '#0000A6', '#63FFAC', '#B79762', '#004D43', '#8FB0FF', '#997D87', '#5A0007', '#809693', '#6A3A4C',
+                      '#1B4400', '#4FC601', '#3B5DFF', '#4A3B53', '#FF2F80', '#61615A', '#BA0900', '#6B7900', '#00C2A0',
+                      '#FFAA92', '#FF90C9', '#B903AA', '#D16100', '#DDEFFF', '#000035', '#7B4F4B', '#A1C299', '#300018',
+                      '#0AA6D8', '#013349', '#00846F', '#372101', '#FFB500', '#C2FFED', '#A079BF', '#CC0744', '#C0B9B2',
+                      '#C2FF99', '#001E09', '#00489C', '#6F0062', '#0CBD66', '#EEC3FF', '#456D75', '#B77B68', '#7A87A1',
+                      '#788D66', '#885578', '#FAD09F', '#FF8A9A', '#D157A0', '#BEC459', '#456648', '#0086ED', '#886F4C',
+                      '#34362D', '#B4A8BD', '#00A6AA', '#452C2C', '#636375', '#A3C8C9', '#FF913F', '#938A81', '#575329',
+                      '#00FECF', '#B05B6F', '#8CD0FF', '#3B9700', '#04F757', '#C8A1A1', '#1E6E00', '#7900D7', '#A77500',
+                      '#6367A9', '#A05837', '#6B002C', '#772600', '#D790FF', '#9B9700', '#549E79', '#FFF69F', '#201625',
+                      '#72418F', '#BC23FF', '#99ADC0', '#3A2465', '#922329', '#5B4534', '#FDE8DC', '#404E55', '#0089A3',
+                      '#CB7E98', '#A4E804', '#324E72']
+scanpy_default_20 = ['#1f77b4', '#ff7f0e', '#279e68', '#d62728', '#aa40fc', '#8c564b', '#e377c2', '#b5bd61',
+                     '#17becf', '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5', '#c49c94', '#f7b6d2',
+                     '#dbdb8d', '#9edae5', '#ad494a', '#8c6d31']
+scanpy_default_28 = ['#023fa5', '#7d87b9', '#bec1d4', '#d6bcc0', '#bb7784', '#8e063b', '#4a6fe3', '#8595e1',
+                     '#b5bbe3', '#e6afb9', '#e07b91', '#d33f6a', '#11c638', '#8dd593', '#c6dec7', '#ead3c6',
+                     '#f0b98d', '#ef9708', '#0fcfc0', '#9cded6', '#d5eae7', '#f3e1eb', '#f6c4e1', '#f79cd4',
+                     '#7f7f7f', '#c7c7c7', '#1CE6FF', '#336600']
+
+
+def __get_scanpy_colors(df, value_to_plot):
+    from matplotlib import rcParams
+    categories = df[value_to_plot].cat.categories
+    length = len(categories)
+
+    # check if default matplotlib palette has enough colors
+    if len(rcParams['axes.prop_cycle'].by_key()['color']) >= length:
+        cc = rcParams['axes.prop_cycle']()
+        palette = [next(cc)['color'] for _ in range(length)]
+
+    else:
+        if length <= 20:
+            palette = scanpy_default_20
+        elif length <= 28:
+            palette = scanpy_default_28
+        elif length <= len(scanpy_default_102):  # 103 colors
+            palette = scanpy_default_102
+        else:
+            palette = ['grey' for _ in range(length)]
+    return palette
+
+
+def __set_colors_scanpy(adata, value_to_plot):
+    palette = __get_scanpy_colors(adata.obs[value_to_plot], value_to_plot)
+    colors = palette[:len(adata.obs[value_to_plot].cat.categories)]
+    adata.uns[value_to_plot + '_colors'] = colors
+    return colors
+
+
+def __fix_cmap(df, key, palette=None):
+    # check for missing values in palette
+    palette = palette.copy()
+    colors = colorcet.b_glasbey_category10
+    ncolors = len(colors)
+    i = 0
+    for c in df[key].cat.categories:
+        if c not in palette:
+            palette[c] = colors[i % ncolors]
+            i += 1
+    return palette
+
+
+def __get_category_cmap(adata, key):
     if key is not None:
-        try:
-            import scanpy
-            scanpy.plotting._utils.add_colors_for_categorical_sample_annotation(adata, key)
-        except ModuleNotFoundError:
-            pass
         color_key = f"{key}_colors"
+        colors = None
         if color_key in adata.uns:
-            colors = adata.uns[color_key]
             adata_categories = adata.obs[key].cat.categories
-            if len(colors) == len(adata_categories):
-                color_map = {}
-                for i in range(len(colors)):
-                    color_map[adata_categories[i]] = colors[i]
-                if as_dict:
-                    return color_map
-
-                def get_color_array(x):
-                    return color_map[x]
-
-                df['__color'] = df[key].apply(get_color_array)
-                return True
-
-    return colorcet.b_glasbey_category10
+            if len(adata.uns[color_key]) == len(adata_categories):
+                colors = adata.uns[color_key]
+        if colors is None:
+            colors = __get_scanpy_colors(adata.obs, key)
+        ncolors = len(colors)
+        color_map = {}
+        adata_categories = adata.obs[key].cat.categories
+        for i in range(len(adata_categories)):
+            color_map[adata_categories[i]] = colors[i % ncolors]
+        return color_map
 
 
 def __create_bounds_stream(source):
@@ -271,8 +325,7 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     adata_raw = __get_raw(adata, use_raw)
     keys = __to_list(keys)
     df = __get_df(adata, adata_raw, keys + ([] if by is None else [by]))
-    if cmap is None:
-        cmap = __get_cmap(adata, df, by)
+    cmap = __get_category_cmap(adata, by) if cmap is None else __fix_cmap(df, by, cmap)
     plots = []
     keywords = dict(padding=0.02, cmap=cmap, rot=90)
     keywords.update(kwds)
@@ -444,29 +497,14 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
             if not is_color_by_numeric:
                 __fix_color_by_data_type(df, color)
 
-        color_keyword_keep = 'cmap'  # dict of colors
-        color_keyword_delete = 'color'  # array of colors
+        __fix_scatter_colors(adata, df, color, is_color_by_numeric, cmap, palette, keywords)
         use_c = is_color_by_numeric
-        # c does not show clickable legend, but respects dict color map
-        if is_color_by_numeric:
-            color_map = 'viridis' if cmap is None else cmap
-        else:
-            color_map = __get_cmap(adata, df, color, use_c) if palette is None else palette
-            color_keyword_keep = 'color'
-            color_keyword_delete = 'cmap'
-            if not use_c and color_map:
-                color_map = '__color'
-
-        keywords[color_keyword_keep] = color_map
-        if color_keyword_delete in keywords:
-            del keywords[color_keyword_delete]
-
         keywords['c' if use_c else 'by'] = color
         if is_color_by_numeric:
             keywords.update(dict(colorbar=True))
             if sort:
                 df = df.sort_values(by=color)
-   
+
     if is_size_by:
         size_min = df[size].min()
         size_max = df[size].max()
@@ -619,13 +657,35 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     return p
 
 
+def __fix_scatter_colors(adata, df_to_plot, key, is_color_by_numeric, cmap, palette, keywords):
+    color_keyword_keep = 'cmap'  # dict of colors to use with 'c'
+    color_keyword_delete = 'color'  # key in df containing colors to use with 'by'
+    use_c = is_color_by_numeric
+    # 'c' does not show clickable legend, but respects dict color map, 'by' shows legend but does not respect color map, use array of colors
+
+    if is_color_by_numeric:
+        color_map = 'viridis' if cmap is None else cmap
+    else:
+        __sort_category(df_to_plot, key)  # for legend
+        color_map = __get_category_cmap(adata, key) if palette is None else __fix_cmap(df_to_plot, key, palette)
+        df_to_plot['__color'] = df_to_plot[key].apply(lambda x: color_map[x])
+        color_map = '__color'
+        color_keyword_keep = 'color'
+        color_keyword_delete = 'cmap'
+
+    keywords[color_keyword_keep] = color_map
+    if color_keyword_delete in keywords:
+        del keywords[color_keyword_delete]
+
+
 def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
               keys: Union[None, str, List[str], Tuple[str]] = None,
               cmap: Union[str, List[str], Tuple[str]] = None, palette: Union[str, List[str], Tuple[str]] = None,
               alpha: float = 1, size: float = None, width: int = 400, height: int = 400, sort: bool = True,
-              cols: int = None, brush_categorical: bool = False,
-              use_raw: bool = None, nbins: int = -1, reduce_function: Callable[[np.array], float] = np.max,
-              legend: str = 'right', tooltips: Union[str, List[str], Tuple[str]] = None,
+              cols: int = None, use_raw: bool = None, nbins: int = -1,
+              reduce_function: Callable[[np.array], float] = np.max,
+              brush_categorical: bool = False, legend: str = 'right',
+              tooltips: Union[str, List[str], Tuple[str]] = None,
               legend_font_size: Union[int, str] = None, opacity_min: float = 0, opacity_max: float = 1,
               **kwds) -> hv.core.element.Element:
     """
@@ -670,7 +730,7 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
         nonselection_alpha=0.1,
         tools=['box_select'], legend=not legend == 'data')
     plots = []
-    numeric_plots = []
+    charts_to_brush = []
     keywords.update(kwds)
     data_df = __get_df(adata, adata_raw, keys + tooltips, is_obs=True)
     density = len(keys) == 0
@@ -688,7 +748,6 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
         if bin_data or density:
             df['count'] = 1.0
         if bin_data:
-            brush_categorical = True
             df, df_with_coords = __bin(df, nbins=nbins, coordinate_columns=coordinate_columns,
                 reduce_function=reduce_function)
 
@@ -697,8 +756,8 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
 
         for key in keys:
             is_color_by_numeric = False
-            is_categorical = bin_data and pd.api.types.is_object_dtype(df[key])
-            if is_categorical:
+            is_categorical_binned = bin_data and pd.api.types.is_object_dtype(df[key])
+            if is_categorical_binned:
                 df_to_plot = pd.DataFrame(df[key].tolist(), columns=[key, str(key) + '_purity']).join(df,
                     rsuffix='orig_')
             else:
@@ -709,28 +768,10 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
             if sort and is_color_by_numeric:
                 df_to_plot = df.sort_values(by=key)
             __create_hover_tool(df_to_plot, keywords, exclude=coordinate_columns, current=key)
-            color_keyword_keep = 'cmap'  # dict of colors
-            color_keyword_delete = 'color'  # array of colors
             use_c = is_color_by_numeric or brush_categorical
-            # c does not show clickable legend, but respects dict color map
+            __fix_scatter_colors(adata, df_to_plot, key, is_color_by_numeric, cmap, palette, keywords)
 
-            if is_color_by_numeric:
-                color_map = 'viridis' if cmap is None else cmap
-            else:
-                if not brush_categorical:
-                    color_keyword_keep = 'color'
-                    color_keyword_delete = 'cmap'
-
-                __sort_category(df_to_plot, key)  # for legend
-                color_map = __get_cmap(adata, df_to_plot, key, use_c) if palette is None else palette
-                if not use_c and color_map:
-                    color_map = '__color'
-
-            keywords[color_keyword_keep] = color_map
-            if color_keyword_delete in keywords:
-                del keywords[color_keyword_delete]
-
-            if is_categorical:
+            if is_categorical_binned:
                 point_opacity = np.interp(df_to_plot[str(key) + '_purity'],
                     (df_to_plot[str(key) + '_purity'].min(), df_to_plot[str(key) + '_purity'].max()),
                     (opacity_min, opacity_max))
@@ -742,14 +783,14 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
                 c=key if use_c else None,
                 by=key if not use_c else None,
                 size=size,
-                alpha='__point_opacity' if is_categorical else alpha,
+                alpha='__point_opacity' if is_categorical_binned else alpha,
                 colorbar=is_color_by_numeric,
                 width=width,
                 height=height,
                 **keywords)
             bounds_stream = __create_bounds_stream(p)
-            if use_c and not sort and not bin_data:
-                numeric_plots.append(p)
+            if not sort and not bin_data:
+                charts_to_brush.append(p)
             if not is_color_by_numeric and labels_on_data:
                 labels_df = df_to_plot[[coordinate_columns[0], coordinate_columns[1], key]].groupby(key).aggregate(
                     np.median)
@@ -758,10 +799,10 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
                 p = p * labels
             p.bounds_stream = bounds_stream
             plots.append(p)
-    for i in range(len(numeric_plots)):
+    for i in range(len(charts_to_brush)):
         for j in range(i):
-            __BrushLinkRange(numeric_plots[i], numeric_plots[j])
-            __BrushLinkRange(numeric_plots[j], numeric_plots[i])
+            __BrushLinkRange(charts_to_brush[i], charts_to_brush[j])
+            __BrushLinkRange(charts_to_brush[j], charts_to_brush[i])
     if cols is None:
         cols = 1 if width > 500 else 2
     layout = hv.Layout(plots).cols(cols)
@@ -899,8 +940,8 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
     for column in adata_df:
         if not pd.api.types.is_categorical_dtype(adata_df[column]):
             adata_df[column] = adata_df[column].astype(str).astype('category')
-    if cmap is None:
-        cmap = __get_cmap(adata, adata_df, by)
+
+    cmap = __get_category_cmap(adata_df, condition) if cmap is None else __fix_cmap(adata_df, condition, cmap)
     keywords = dict(stacked=stacked, group_label=condition)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
