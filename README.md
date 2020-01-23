@@ -12,8 +12,8 @@ Interactive single cell plotting library for [anndata](https://anndata.readthedo
 # Screenshots
 ![embedding](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/embedding.png)
 ![composition_plot](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/composition_plot.png)
-![dotplot](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/dotplot.png)
 ![heatmap](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/heatmap.png)
+![dotplot](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/dotplot.png)
 ![violin](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/violin.png)
 ![scatter](https://github.com/klarman-cell-observatory/scPlot/raw/master/images/scatter.png)
 
