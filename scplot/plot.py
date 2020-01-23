@@ -829,6 +829,8 @@ def variable_feature_plot(adata: AnnData, **kwds) -> hv.core.element.Element:
             xlabel='Mean log expression', ylabel='Normalized dispersion')
 
     keywords.update(kwds)
+    if 'cmap' not in keywords:
+        keywords['cmap'] = {'True': '#e41a1c', 'False': '#bdbdbd'}
     x = keywords.pop('x')
     y = keywords.pop('y')
     color = keywords.pop('color')
