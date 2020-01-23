@@ -127,9 +127,9 @@ scanpy_default_28 = ['#023fa5', '#7d87b9', '#bec1d4', '#d6bcc0', '#bb7784', '#8e
                      '#7f7f7f', '#c7c7c7', '#1CE6FF', '#336600']
 
 
-def __get_scanpy_colors(df, value_to_plot):
+def __get_scanpy_colors(series):
     from matplotlib import rcParams
-    categories = df[value_to_plot].cat.categories
+    categories = series.cat.categories
     length = len(categories)
 
     # check if default matplotlib palette has enough colors
@@ -149,42 +149,47 @@ def __get_scanpy_colors(df, value_to_plot):
     return palette
 
 
-def __set_colors_scanpy(adata, value_to_plot):
-    palette = __get_scanpy_colors(adata.obs[value_to_plot], value_to_plot)
-    colors = palette[:len(adata.obs[value_to_plot].cat.categories)]
-    adata.uns[value_to_plot + '_colors'] = colors
-    return colors
-
-
 def __fix_cmap(df, key, palette=None):
     # check for missing values in palette
     palette = palette.copy()
     colors = colorcet.b_glasbey_category10
     ncolors = len(colors)
     i = 0
-    for c in df[key].cat.categories:
+    series = df[key]
+    if not pd.api.types.is_categorical_dtype(series):
+        # hvplot does not handle boolean type for colors
+        series = series.astype('category') if not pd.api.types.is_bool_dtype(series) else series.astype(str).astype(
+            'category')
+        df[key] = series
+    for c in series.cat.categories:
         if c not in palette:
             palette[c] = colors[i % ncolors]
             i += 1
     return palette
 
 
-def __get_category_cmap(adata, key):
-    if key is not None:
-        color_key = f"{key}_colors"
-        colors = None
-        if color_key in adata.uns:
-            adata_categories = adata.obs[key].cat.categories
-            if len(adata.uns[color_key]) == len(adata_categories):
-                colors = adata.uns[color_key]
-        if colors is None:
-            colors = __get_scanpy_colors(adata.obs, key)
-        ncolors = len(colors)
-        color_map = {}
-        adata_categories = adata.obs[key].cat.categories
-        for i in range(len(adata_categories)):
-            color_map[adata_categories[i]] = colors[i % ncolors]
-        return color_map
+def __get_category_cmap(adata, df, key):
+    color_key = f"{key}_colors"
+    colors = None
+    series = df[key]
+    if not pd.api.types.is_categorical_dtype(series):
+        # hvplot does not handle boolean type for colors
+        series = series.astype('category') if not pd.api.types.is_bool_dtype(series) else series.astype(str).astype(
+            'category')
+        df[key] = series
+
+    if color_key in adata.uns:
+        adata_categories = series.cat.categories
+        if len(adata.uns[color_key]) == len(adata_categories):
+            colors = adata.uns[color_key]
+    if colors is None:
+        colors = __get_scanpy_colors(series)
+    ncolors = len(colors)
+    color_map = {}
+    adata_categories = series.cat.categories
+    for i in range(len(adata_categories)):
+        color_map[adata_categories[i]] = colors[i % ncolors]
+    return color_map
 
 
 def __create_bounds_stream(source):
@@ -228,11 +233,6 @@ def __size_legend(size_min, size_max, dot_min, dot_max, size_tick_labels_format,
         ylim=(0, len(size_ticks) + 1),
         invert_yaxis=True, shared_axes=False, show_frame=False)
     return overlay
-
-
-def __fix_color_by_data_type(df, by):
-    if by is not None and pd.api.types.is_bool_dtype(df[by]):
-        df[by] = df[by].astype(str).astype('category')  # hvplot does not handle boolean type for colors
 
 
 def __get_raw(adata, use_raw):
@@ -325,19 +325,21 @@ def violin(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str = No
     adata_raw = __get_raw(adata, use_raw)
     keys = __to_list(keys)
     df = __get_df(adata, adata_raw, keys + ([] if by is None else [by]))
-    cmap = __get_category_cmap(adata, by) if cmap is None else __fix_cmap(df, by, cmap)
+    if by is not None:
+        cmap = __get_category_cmap(adata, df, by) if cmap is None else __fix_cmap(df, by, cmap)
     plots = []
     keywords = dict(padding=0.02, cmap=cmap, rot=90)
     keywords.update(kwds)
 
-    __fix_color_by_data_type(df, by)
     if by is not None:
         __sort_category(df, by)
     for key in keys:
         p = df.hvplot.violin(key, width=width, by=by, violin_color=by, **keywords)
         plots.append(p)
 
-    return hv.Layout(plots).cols(cols)
+    layout = hv.Layout(plots).cols(cols)
+    layout.df = df
+    return layout
 
 
 def heatmap(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
@@ -494,8 +496,8 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
                 rsuffix='orig_')
         else:
             is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
-            if not is_color_by_numeric:
-                __fix_color_by_data_type(df, color)
+            # if not is_color_by_numeric:
+            #     __fix_color_by_data_type(df, color)
 
         __fix_scatter_colors(adata, df, color, is_color_by_numeric, cmap, palette, keywords)
         use_c = is_color_by_numeric
@@ -654,7 +656,9 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
     if color is not None:
         keys.append(color)
     df = __get_df(adata, adata_raw, keys)
-    __fix_color_by_data_type(df, color)
+
+    if color is not None and pd.api.types.is_bool_dtype(df[color]):
+        df[color] = df[color].astype(str).astype('category')
     p = hvplot.scatter_matrix(df, c=color, **kwds)
     p.df = df
     return p
@@ -663,14 +667,14 @@ def scatter_matrix(adata: AnnData, keys: Union[str, List[str], Tuple[str]], colo
 def __fix_scatter_colors(adata, df_to_plot, key, is_color_by_numeric, cmap, palette, keywords):
     color_keyword_keep = 'cmap'  # dict of colors to use with 'c'
     color_keyword_delete = 'color'  # key in df containing colors to use with 'by'
-    use_c = is_color_by_numeric
     # 'c' does not show clickable legend, but respects dict color map, 'by' shows legend but does not respect color map, use array of colors
 
     if is_color_by_numeric:
         color_map = 'viridis' if cmap is None else cmap
     else:
         __sort_category(df_to_plot, key)  # for legend
-        color_map = __get_category_cmap(adata, key) if palette is None else __fix_cmap(df_to_plot, key, palette)
+        color_map = __get_category_cmap(adata, df_to_plot, key) if palette is None else __fix_cmap(df_to_plot, key,
+            palette)
         df_to_plot['__color'] = df_to_plot[key].apply(lambda x: color_map[x])
         color_map = '__color'
         color_keyword_keep = 'color'
@@ -765,8 +769,8 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
                     rsuffix='orig_')
             else:
                 is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
-                if not is_color_by_numeric:
-                    __fix_color_by_data_type(df, key)
+                # if not is_color_by_numeric:
+                #     __fix_color_by_data_type(df, key)
                 df_to_plot = df
             if sort and is_color_by_numeric:
                 df_to_plot = df.sort_values(by=key)
@@ -946,7 +950,8 @@ def composition_plot(adata: AnnData, by: str, condition: str, stacked: bool = Tr
         if not pd.api.types.is_categorical_dtype(adata_df[column]):
             adata_df[column] = adata_df[column].astype(str).astype('category')
 
-    cmap = __get_category_cmap(adata_df, condition) if cmap is None else __fix_cmap(adata_df, condition, cmap)
+    cmap = __get_category_cmap(adata_raw, adata_df, condition) if cmap is None else __fix_cmap(adata_df, condition,
+        cmap)
     keywords = dict(stacked=stacked, group_label=condition)
     keywords.update(kwds)
     invert = keywords.get('invert', False)
