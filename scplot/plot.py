@@ -532,7 +532,7 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
 
 def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
             reduce_function: Callable[[np.ndarray], float] = np.mean,
-            fraction_min: float = 0, fraction_max: float = None, dot_min: int = 0, dot_max: int = 20,
+            fraction_min: float = 0, fraction_max: float = None, dot_min: int = 1, dot_max: int = 26,
             use_raw: bool = None, cmap: Union[str, List[str], Tuple[str]] = 'Reds',
             sort_function: Callable[[pd.DataFrame], List[str]] = None, **kwds) -> hv.core.element.Element:
     """
@@ -590,19 +590,22 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     fraction = fraction_df.values.flatten()
     if fraction_max is None:
         fraction_max = fraction.max()
-    size = np.interp(fraction, (fraction_min, fraction_max), (dot_min, dot_max))
+    pixels = np.interp(fraction, (fraction_min, fraction_max), (dot_min, dot_max))
+    pixels = pixels * pixels  # hvplot takes the sqrt of size
     summary_values = mean_df.values.flatten()
     xlabel = [keys[i] for i in range(len(keys))]
     ylabel = [str(summarized_df.index[i]) for i in range(len(summarized_df.index))]
     dotplot_df = pd.DataFrame(
-        data=dict(x=x, y=y, value=summary_values, pixels=size, fraction=fraction, xlabel=np.array(xlabel)[x],
+        data=dict(x=x, y=y, value=summary_values, pixels=pixels, fraction=fraction, xlabel=np.array(xlabel)[x],
             ylabel=np.array(ylabel)[y]))
 
     xticks = [(i, keys[i]) for i in range(len(keys))]
     yticks = [(i, str(summarized_df.index[i])) for i in range(len(summarized_df.index))]
 
-    keywords['width'] = int(np.ceil((dot_max + 1) * len(xticks) + dot_max + 130))
-    keywords['height'] = int(np.ceil((dot_max + 1) * len(yticks) + 100))
+    # note we take the max label string length as an approximation of width of labels in pixels
+    keywords['width'] = int(
+        np.ceil(((dot_max + 1) + 4) * len(xticks) + dotplot_df['ylabel'].str.len().max()) + dot_max + 100)
+    keywords['height'] = int(np.ceil(((dot_max + 1) + 4) * len(yticks) + dotplot_df['xlabel'].str.len().max()) + 50)
     try:
         import bokeh.models
         keywords['hover_cols'] = ['fraction', 'xlabel', 'ylabel']
@@ -615,7 +618,7 @@ def dotplot(adata: AnnData, keys: Union[str, List[str], Tuple[str]], by: str,
     except ModuleNotFoundError:
         pass
 
-    p = dotplot_df.hvplot.scatter(x='x', y='y', xlim=(-0.5, len(xticks) + 0.5), ylim=(-0.5, len(yticks) + 0.5),
+    p = dotplot_df.hvplot.scatter(x='x', y='y', xlim=(-1, len(xticks)), ylim=(-1, len(yticks)),
         c='value', s='pixels', xticks=xticks, yticks=yticks, **keywords)
 
     size_range = fraction_max - fraction_min

@@ -1,3 +1,7 @@
+# 0.0.15, January 23, 2020 
+- Use same colors as `scanpy`.
+- Optionally sort composition_plot 
+
 # 0.0.14, November 20, 2019 
 - Use `natsort` to sort categories
 - Use colors specified in anndata.uns if available
