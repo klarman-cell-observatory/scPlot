@@ -1,3 +1,6 @@
+# 0.0.16, January 30, 2020 
+- Fixed color by boolean data type
+
 # 0.0.15, January 23, 2020 
 - Use same colors as `scanpy`.
 - Optionally sort composition_plot 
