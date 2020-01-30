@@ -488,25 +488,20 @@ def __scatter(adata: AnnData, x: str, y: str, color=None, size: Union[int, str] 
     keywords['hover_cols'] = hover_cols
 
     if is_color_by:
-        is_color_by_numeric = False
         is_categorical = bin_data and pd.api.types.is_object_dtype(df[color])
-
         if is_categorical:
             df = pd.DataFrame(df[color].tolist(), columns=[color, str(color) + '_purity']).join(df,
                 rsuffix='orig_')
-        else:
-            is_color_by_numeric = pd.api.types.is_numeric_dtype(df[color])
-            # if not is_color_by_numeric:
-            #     __fix_color_by_data_type(df, color)
-
+        is_color_by_numeric = not pd.api.types.is_bool_dtype(df[color]) and pd.api.types.is_numeric_dtype(df[color])
         __fix_scatter_colors(adata, df, color, is_color_by_numeric, cmap, palette, keywords)
-        use_c = is_color_by_numeric
-        keywords['c' if use_c else 'by'] = color
+
         if is_color_by_numeric:
+            keywords['c'] = color
             keywords.update(dict(colorbar=True))
             if sort:
                 df = df.sort_values(by=color)
-
+        else:
+            keywords['by'] = color
     if is_size_by:
         size_min = df[size].min()
         size_max = df[size].max()
@@ -768,7 +763,7 @@ def embedding(adata: AnnData, basis: Union[str, List[str], Tuple[str]],
                 df_to_plot = pd.DataFrame(df[key].tolist(), columns=[key, str(key) + '_purity']).join(df,
                     rsuffix='orig_')
             else:
-                is_color_by_numeric = pd.api.types.is_numeric_dtype(df[key])
+                is_color_by_numeric = not pd.api.types.is_bool_dtype(df[key]) and pd.api.types.is_numeric_dtype(df[key])
                 # if not is_color_by_numeric:
                 #     __fix_color_by_data_type(df, key)
                 df_to_plot = df
